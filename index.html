@@ -207,11 +207,17 @@
       outline-offset: -2px;
       background: rgba(106,166,255,0.10);
     }
-    /* Пользовательский выходной (пометка в заголовке) */
+    /* День выходной целиком (x1.5): мягкая подсветка */
     .hcell.userOff{
       outline: 2px solid rgba(255,255,255,0.10);
       outline-offset: -2px;
       background: rgba(255,255,255,0.03);
+    }
+    /* День принудительно рабочий (например, суббота сделана рабочей): другая мягкая подсветка */
+    .hcell.userWork{
+      outline: 2px dashed rgba(255,255,255,0.12);
+      outline-offset: -2px;
+      background: rgba(0,0,0,0.10);
     }
 
     .rightBody{
@@ -386,15 +392,28 @@
       margin: 14px;
     }
     .overlay.open{display:block}
+
+    .pillNote{
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      padding:8px 10px;
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      font-size:12px;
+      line-height: 1.35;
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Time Tracker</h1>
     <div class="sub">
-      Supabase + e-mail login. <br>
-      Повышенная ставка x1.5: (1) суббота/воскресенье целиком, (2) пользовательские выходные (клик по дате), (3) будни до 10:00 и с 19:00.
-      <br>В календаре затемнены только ячейки с обычной ставкой (x1).
+      Supabase + e-mail login. Повышенная ставка x1.5:
+      (1) выходной день целиком, (2) будни до 10:00 и с 19:00.
+      В календаре затемнены только ячейки с обычной ставкой (x1).
     </div>
   </header>
 
@@ -430,13 +449,12 @@
         <div class="row">
           <div class="controls">
             <button class="btn" id="goToday">Показать сегодня по центру</button>
-            <span class="small muted">
-              Горизонтально прокручивай — даты подгружаются слева и справа. <br>
-              <b>Клик по дате</b> в заголовке столбца: отметить/снять пользовательский выходной (x1.5 на весь день).
+            <span class="pillNote">
+              <span class="kbd">Клик</span> по дате в заголовке: переключить день <b>Рабочий ↔ Выходной</b> (влияет на x1.5)
             </span>
           </div>
           <div class="controls">
-            <span class="small muted"><span class="kbd">Esc</span> — закрыть окно выбора.</span>
+            <span class="small muted"><span class="kbd">Esc</span> — закрыть окно.</span>
           </div>
         </div>
 
@@ -501,14 +519,15 @@
     </div>
   </div>
 
-  <div class="modalBack" id="modalBack">
+  <!-- Modal 1: cell tasks -->
+  <div class="modalBack" id="modalBackCell">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modalHead">
         <div class="modalTitle">Задачи в ячейке</div>
-        <button class="btn ghost" id="modalClose" title="Закрыть (Esc)">✕</button>
+        <button class="btn ghost" id="modalCloseCell" title="Закрыть (Esc)">✕</button>
       </div>
       <div class="modalBody">
-        <div class="small muted" id="modalMeta"></div>
+        <div class="small muted" id="modalMetaCell"></div>
         <div style="height:10px"></div>
 
         <div class="twoCols">
@@ -522,11 +541,33 @@
           </div>
         </div>
 
-        <div class="hint" id="modalHint"></div>
+        <div class="hint" id="modalHintCell"></div>
       </div>
       <div class="modalFoot">
         <button class="btn" id="clearCell">Очистить</button>
         <button class="btn primary" id="saveCell">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: day toggle -->
+  <div class="modalBack" id="modalBackDay">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modalHead">
+        <div class="modalTitle">День: Рабочий / Выходной</div>
+        <button class="btn ghost" id="modalCloseDay" title="Закрыть (Esc)">✕</button>
+      </div>
+      <div class="modalBody">
+        <div class="small muted" id="modalMetaDay"></div>
+        <div style="height:10px"></div>
+
+        <div class="pillNote" id="modalExplainDay"></div>
+
+        <div class="hint" id="modalHintDay" style="margin-top:10px;"></div>
+      </div>
+      <div class="modalFoot">
+        <button class="btn" id="resetDay">Сбросить</button>
+        <button class="btn primary" id="toggleDay">Переключить</button>
       </div>
     </div>
   </div>
@@ -556,8 +597,8 @@ let showArchived = false;
 // cache: which dates we already fetched entries for (to reduce calls)
 const loadedDates = new Set();
 
-// custom premium days (user-defined weekends): 'YYYY-MM-DD'
-const premiumDates = new Set();
+// day overrides: Map dateISO -> is_premium (true=выходной целиком, false=принудительно рабочий)
+const dayOverrides = new Map();
 
 /** =======================
  *  UI refs
@@ -608,20 +649,34 @@ function slotToLabel(slotIndex){
   const base = `${pad2(h)}:${pad2(m)}`;
   return dayPlus === 0 ? base : `${base} (+1)`;
 }
+function isWeekendISO(dateISO){
+  const d = fromISODate(dateISO);
+  const day = d.getDay(); // 0=вс, 6=сб
+  return (day === 0 || day === 6);
+}
+function getOverride(dateISO){
+  return dayOverrides.has(dateISO) ? dayOverrides.get(dateISO) : null;
+}
+
+/**
+ * Эффективный “выходной целиком?”:
+ * - если есть override: true/false
+ * - иначе: по календарю (сб/вс выходные)
+ */
+function isPremiumWholeDay(dateISO){
+  const ov = getOverride(dateISO);
+  if(ov === true) return true;
+  if(ov === false) return false;
+  return isWeekendISO(dateISO);
+}
 
 /**
  * Коэффициент x1.5 если:
- * - пользователь отметил день как выходной (premiumDates)
- * - суббота/воскресенье (весь день)
- * - будни: до 10:00 и с 19:00
+ * - день "выходной целиком" (isPremiumWholeDay=true) -> весь день 1.5
+ * - иначе (рабочий день) -> только по времени: до 10:00 и с 19:00
  */
 function slotMultiplier(dateISO, slotIndex){
-  if(premiumDates.has(dateISO)) return 1.5;
-
-  const d = fromISODate(dateISO);
-  const day = d.getDay(); // 0=вс, 6=сб
-  const isWeekend = (day === 0 || day === 6);
-  if(isWeekend) return 1.5;
+  if(isPremiumWholeDay(dateISO)) return 1.5;
 
   const mins = (slotIndex * 30) % 1440;
   const hour = mins / 60;
@@ -660,7 +715,7 @@ function setAuthed(s){
     projects = [];
     entries = {};
     loadedDates.clear();
-    premiumDates.clear();
+    dayOverrides.clear();
     renderAll(false);
   }
 }
@@ -744,37 +799,33 @@ async function fetchEntriesForDates(dateList){
   }
 }
 
-async function fetchPremiumDatesForDates(dateList){
+async function fetchDayOverridesForDates(dateList){
   const dates = dateList.filter(Boolean);
   if(!dates.length) return;
 
   const { data, error } = await sb
-    .from("premium_days")
-    .select("date")
+    .from("day_overrides")
+    .select("date,is_premium")
     .in("date", dates);
 
   if(error) throw error;
 
-  // обновляем set только для этих дат: сначала удалим их, потом добавим найденные
-  for(const d of dates) premiumDates.delete(d);
-  for(const row of (data || [])) premiumDates.add(row.date);
+  // сбросим overrides для этих дат, потом добавим что пришло
+  for(const d of dates) dayOverrides.delete(d);
+  for(const row of (data || [])) dayOverrides.set(row.date, !!row.is_premium);
 }
 
-async function setPremiumDay(dateISO, isPremium){
-  if(!userId) return;
+async function upsertDayOverride(dateISO, isPremium){
+  const payload = { user_id: userId, date: dateISO, is_premium: !!isPremium };
+  const { error } = await sb.from("day_overrides").upsert(payload, { onConflict: "user_id,date" });
+  if(error) throw error;
+  dayOverrides.set(dateISO, !!isPremium);
+}
 
-  if(isPremium){
-    const { error } = await sb.from("premium_days").insert({
-      user_id: userId,
-      date: dateISO
-    });
-    if(error) throw error;
-    premiumDates.add(dateISO);
-  } else {
-    const { error } = await sb.from("premium_days").delete().eq("date", dateISO);
-    if(error) throw error;
-    premiumDates.delete(dateISO);
-  }
+async function deleteDayOverride(dateISO){
+  const { error } = await sb.from("day_overrides").delete().eq("date", dateISO);
+  if(error) throw error;
+  dayOverrides.delete(dateISO);
 }
 
 async function saveProjectToDb(p){
@@ -838,7 +889,7 @@ async function bootAuthed(){
 
   rebuildColumns();
   await fetchEntriesForDates(columns.map(c=>c.iso));
-  await fetchPremiumDatesForDates(columns.map(c=>c.iso));
+  await fetchDayOverridesForDates(columns.map(c=>c.iso));
 
   renderAll(false);
   requestAnimationFrame(()=> centerToday());
@@ -912,31 +963,16 @@ function renderRightHeader(){
     el.textContent = fmtDayHeader(col.date);
     el.dataset.date = col.iso;
 
-    if(premiumDates.has(col.iso)) el.classList.add("userOff");
+    // метки override
+    const ov = getOverride(col.iso);
+    if(ov === true) el.classList.add("userOff");
+    if(ov === false) el.classList.add("userWork");
 
     el.style.cursor = "pointer";
-    el.title = "Клик: отметить/снять пользовательский выходной (x1.5 на весь день)";
+    el.title = "Клик: сделать день рабочим/выходным (влияет на x1.5)";
 
-    el.addEventListener("click", async ()=>{
-      if(!userId){
-        alert("Сначала войди по e-mail, чтобы сохранять выходные в базе.");
-        return;
-      }
-      const cur = premiumDates.has(col.iso);
-      const ok = cur
-        ? confirm(`Убрать пользовательский выходной для ${col.iso}?`)
-        : confirm(`Отметить ${col.iso} как выходной (x1.5 на весь день)?`);
-      if(!ok) return;
-
-      try{
-        await setPremiumDay(col.iso, !cur);
-        // обновим только видимую полосу дат (на случай рассинхрона)
-        await fetchPremiumDatesForDates(columns.map(c=>c.iso));
-        renderAll(true);
-      } catch(e){
-        console.error(e);
-        alert("Не получилось сохранить выходной день. Проверь RLS и авторизацию.");
-      }
+    el.addEventListener("click", ()=>{
+      openDayModal(col.iso);
     });
 
     rightHeader.appendChild(el);
@@ -1014,7 +1050,7 @@ function forwardHorizontalWheel(e){
 rightBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
 leftBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
 
-/* Infinite scroll left+right + fetch entries + premium days for new dates */
+/* Infinite scroll left+right + fetch entries + overrides for new dates */
 let scrollTicking = false;
 hScroll.addEventListener("scroll", ()=>{
   if(scrollTicking) return;
@@ -1035,7 +1071,7 @@ hScroll.addEventListener("scroll", ()=>{
       if(userId){
         try{
           await fetchEntriesForDates(columns.map(c=>c.iso));
-          await fetchPremiumDatesForDates(columns.map(c=>c.iso));
+          await fetchDayOverridesForDates(columns.map(c=>c.iso));
         } catch(e){
           console.error(e);
         }
@@ -1062,7 +1098,7 @@ function centerToday(){
     if(userId){
       Promise.all([
         fetchEntriesForDates(columns.map(c=>c.iso)),
-        fetchPremiumDatesForDates(columns.map(c=>c.iso))
+        fetchDayOverridesForDates(columns.map(c=>c.iso))
       ]).then(()=> renderAll(true)).catch(console.error);
     } else {
       renderAll(true);
@@ -1077,17 +1113,17 @@ function centerToday(){
 document.getElementById("goToday").addEventListener("click", centerToday);
 
 /** =======================
- *  Modal (2 tasks)
+ *  Modal 1 (cell tasks)
  *  ======================= */
-const modalBack = document.getElementById("modalBack");
-const modalClose = document.getElementById("modalClose");
-const modalMeta = document.getElementById("modalMeta");
-const modalHint = document.getElementById("modalHint");
+const modalBackCell = document.getElementById("modalBackCell");
+const modalCloseCell = document.getElementById("modalCloseCell");
+const modalMetaCell = document.getElementById("modalMetaCell");
+const modalHintCell = document.getElementById("modalHintCell");
 const task1Select = document.getElementById("task1Select");
 const task2Select = document.getElementById("task2Select");
 const btnSaveCell = document.getElementById("saveCell");
 const btnClearCell = document.getElementById("clearCell");
-let modalState = { dateISO:null, slot:null };
+let modalCellState = { dateISO:null, slot:null };
 
 function fillSelectWithProjects(sel, selectable, includeNone){
   sel.innerHTML = "";
@@ -1111,12 +1147,12 @@ function openCellModal(dateISO, slot, currentTasks){
     return;
   }
 
-  modalState = { dateISO, slot };
+  modalCellState = { dateISO, slot };
   const mult = slotMultiplier(dateISO, slot);
   const tasks = (Array.isArray(currentTasks) ? currentTasks : []).slice(0,2);
   const isTwo = tasks.length === 2;
 
-  modalMeta.textContent =
+  modalMetaCell.textContent =
     `${dateISO} • ${slotToLabel(slot)} – ${slotToLabel(slot+1)} (30 минут) • x${mult} • ` +
     (isTwo ? `2 задачи по 0.25ч` : `1 задача 0.5ч`);
 
@@ -1132,7 +1168,7 @@ function openCellModal(dateISO, slot, currentTasks){
     task1Select.disabled = true;
     task2Select.disabled = true;
     btnSaveCell.disabled = true;
-    modalHint.textContent = "Открой вкладку 2 и выключи “Архив” у проекта.";
+    modalHintCell.textContent = "Открой вкладку 2 и выключи “Архив” у проекта.";
   } else {
     task1Select.disabled = false;
     task2Select.disabled = false;
@@ -1150,17 +1186,16 @@ function openCellModal(dateISO, slot, currentTasks){
     if(t2 && selectable.some(p=>p.id===t2)) task2Select.value = t2;
     else task2Select.value = "";
 
-    modalHint.textContent = "Можно выбрать до 2 задач в одной ячейке.";
+    modalHintCell.textContent = "Можно выбрать до 2 задач в одной ячейке.";
   }
 
-  modalBack.classList.add("open");
+  modalBackCell.classList.add("open");
   setTimeout(()=> task1Select.focus(), 0);
 }
 
-function closeModal(){ modalBack.classList.remove("open"); }
-modalClose.addEventListener("click", closeModal);
-modalBack.addEventListener("click", (e)=>{ if(e.target === modalBack) closeModal(); });
-document.addEventListener("keydown", (e)=>{ if(e.key === "Escape" && modalBack.classList.contains("open")) closeModal(); });
+function closeCellModal(){ modalBackCell.classList.remove("open"); }
+modalCloseCell.addEventListener("click", closeCellModal);
+modalBackCell.addEventListener("click", (e)=>{ if(e.target === modalBackCell) closeCellModal(); });
 
 btnSaveCell.addEventListener("click", async ()=>{
   const selectable = projects.filter(isProjectSelectable);
@@ -1174,8 +1209,8 @@ btnSaveCell.addEventListener("click", async ()=>{
   if(t2) next.push(t2);
 
   try{
-    await saveCellToDb(modalState.dateISO, modalState.slot, next);
-    closeModal();
+    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, next);
+    closeCellModal();
     renderAll(true);
   } catch(e){
     console.error(e);
@@ -1185,13 +1220,114 @@ btnSaveCell.addEventListener("click", async ()=>{
 
 btnClearCell.addEventListener("click", async ()=>{
   try{
-    await saveCellToDb(modalState.dateISO, modalState.slot, []);
-    closeModal();
+    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, []);
+    closeCellModal();
     renderAll(true);
   } catch(e){
     console.error(e);
     alert("Ошибка очистки ячейки.");
   }
+});
+
+/** =======================
+ *  Modal 2 (day toggle)
+ *  ======================= */
+const modalBackDay = document.getElementById("modalBackDay");
+const modalCloseDay = document.getElementById("modalCloseDay");
+const modalMetaDay = document.getElementById("modalMetaDay");
+const modalExplainDay = document.getElementById("modalExplainDay");
+const modalHintDay = document.getElementById("modalHintDay");
+const btnResetDay = document.getElementById("resetDay");
+const btnToggleDay = document.getElementById("toggleDay");
+
+let modalDayState = { dateISO:null };
+
+function openDayModal(dateISO){
+  if(!userId){
+    alert("Сначала войди по e-mail, чтобы сохранять изменения дней в базе.");
+    return;
+  }
+
+  modalDayState = { dateISO };
+
+  const ov = getOverride(dateISO); // true/false/null
+  const weekendDefault = isWeekendISO(dateISO);
+  const effectivePremium = isPremiumWholeDay(dateISO);
+
+  // текущий статус
+  const curLabel = effectivePremium ? "Выходной (x1.5 весь день)" : "Рабочий (x1.5 только до 10:00 и с 19:00)";
+  const baseLabel = weekendDefault ? "По умолчанию: выходной (сб/вс)" : "По умолчанию: рабочий";
+
+  modalMetaDay.textContent = `${dateISO} • ${fmtDayHeader(fromISODate(dateISO))}`;
+  modalExplainDay.textContent = `${baseLabel}. Сейчас: ${curLabel}.`;
+
+  // кнопка toggle: переворачивает эффективный статус
+  btnToggleDay.textContent = effectivePremium ? "Сделать рабочим" : "Сделать выходным";
+
+  // reset доступен только если есть override
+  btnResetDay.disabled = (ov === null);
+
+  if(ov === null){
+    modalHintDay.textContent = "Сбросить недоступно — для этого дня нет переопределения.";
+  } else {
+    modalHintDay.textContent = "Сбросить — вернёт поведение “по умолчанию” (сб/вс выходные, будни рабочие).";
+  }
+
+  modalBackDay.classList.add("open");
+}
+
+async function applyToggleDay(){
+  const dateISO = modalDayState.dateISO;
+  const weekendDefault = isWeekendISO(dateISO);
+  const effectivePremium = isPremiumWholeDay(dateISO);
+
+  // хотим противоположное
+  const desired = !effectivePremium;
+
+  // если desired совпадает с default -> override не нужен, просто удаляем
+  const defaultPremium = weekendDefault; // сб/вс = премиум целиком
+  try{
+    if(desired === defaultPremium){
+      await deleteDayOverride(dateISO);
+    } else {
+      await upsertDayOverride(dateISO, desired);
+    }
+    await fetchDayOverridesForDates(columns.map(c=>c.iso));
+    closeDayModal();
+    renderAll(true);
+  } catch(e){
+    console.error(e);
+    alert("Не получилось сохранить изменение дня. Проверь RLS и авторизацию.");
+  }
+}
+
+async function applyResetDay(){
+  const dateISO = modalDayState.dateISO;
+  try{
+    await deleteDayOverride(dateISO);
+    await fetchDayOverridesForDates(columns.map(c=>c.iso));
+    closeDayModal();
+    renderAll(true);
+  } catch(e){
+    console.error(e);
+    alert("Не получилось сбросить день. Проверь RLS и авторизацию.");
+  }
+}
+
+function closeDayModal(){ modalBackDay.classList.remove("open"); }
+
+modalCloseDay.addEventListener("click", closeDayModal);
+modalBackDay.addEventListener("click", (e)=>{ if(e.target === modalBackDay) closeDayModal(); });
+btnToggleDay.addEventListener("click", applyToggleDay);
+btnResetDay.addEventListener("click", applyResetDay);
+
+/** =======================
+ *  Global keyboard (Esc closes any modal)
+ *  ======================= */
+document.addEventListener("keydown", (e)=>{
+  if(e.key !== "Escape") return;
+  if(modalBackCell.classList.contains("open")) closeCellModal();
+  if(modalBackDay.classList.contains("open")) closeDayModal();
 });
 
 /** =======================
@@ -1223,7 +1359,6 @@ addProjectBtn.addEventListener("click", async ()=>{
   if(!Number.isFinite(budget) || budget < 0){ alert("Введите бюджет числом (0 или больше)."); return; }
 
   const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "_" + Math.random().toString(16).slice(2);
-
   const p = { id, name, budget, comment:"", paid:false, archived:false, createdAt: Date.now() };
 
   try{
