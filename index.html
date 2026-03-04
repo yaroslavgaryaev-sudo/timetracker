@@ -92,6 +92,18 @@
     .btn.ghost{background: transparent}
     .btn:disabled{opacity:.55; cursor:not-allowed}
 
+    .btn.icon{
+      width: 34px;
+      height: 34px;
+      padding:0;
+      border-radius: 12px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:16px;
+      font-weight: 900;
+    }
+
     .input, .select, .textarea{
       border:1px solid rgba(255,255,255,0.12);
       background: rgba(0,0,0,0.18);
@@ -108,13 +120,33 @@
     .mono{font-variant-numeric: tabular-nums;}
     .nowrap{white-space:nowrap}
 
-    .cb{
-      display:inline-flex; align-items:center; gap:8px;
-      user-select:none;
-      font-size:12px;
-      color: var(--muted);
+    /* Big darker checkboxes */
+    .ck{
+      appearance:none;
+      -webkit-appearance:none;
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(0,0,0,0.35);
+      display:inline-block;
+      position: relative;
+      cursor:pointer;
     }
-    .cb input{ transform: translateY(1px); }
+    .ck:hover{ background: rgba(0,0,0,0.42); }
+    .ck:checked{
+      background: rgba(106,166,255,0.35);
+      border-color: rgba(106,166,255,0.65);
+    }
+    .ck:checked::after{
+      content:"";
+      position:absolute;
+      left: 6px; top: 2px;
+      width: 6px; height: 11px;
+      border-right: 2px solid rgba(255,255,255,0.95);
+      border-bottom: 2px solid rgba(255,255,255,0.95);
+      transform: rotate(45deg);
+    }
 
     /* Auth bar */
     .authBar{
@@ -207,13 +239,11 @@
       outline-offset: -2px;
       background: rgba(106,166,255,0.10);
     }
-    /* День выходной целиком (x1.5): мягкая подсветка */
     .hcell.userOff{
       outline: 2px solid rgba(255,255,255,0.10);
       outline-offset: -2px;
       background: rgba(255,255,255,0.03);
     }
-    /* День принудительно рабочий (например, суббота сделана рабочей): другая мягкая подсветка */
     .hcell.userWork{
       outline: 2px dashed rgba(255,255,255,0.12);
       outline-offset: -2px;
@@ -249,20 +279,19 @@
     }
     .cell:hover{background: rgba(255,255,255,0.05)}
 
-    /* Обычная ставка (x1) — слегка темнее */
+    /* normal vs premium (x1.5) */
     .cell.normal{
       background: rgba(0,0,0,0.22);
     }
     .cell.normal:hover{
       background: rgba(0,0,0,0.28);
     }
-    /* Повышенная ставка (x1.5) — чуть светлее */
-.cell.premium{
-  background: rgba(255,255,255,0.03);
-}
-.cell.premium:hover{
-  background: rgba(255,255,255,0.05);
-}
+    .cell.premium{
+      background: rgba(255,255,255,0.08);
+    }
+    .cell.premium:hover{
+      background: rgba(255,255,255,0.12);
+    }
 
     .cellPills{
       display:flex;
@@ -286,6 +315,7 @@
     }
     .pill.small{ padding: 2px 6px; font-size:11px; }
     .dot{width:9px; height:9px; border-radius:999px; flex: 0 0 auto; background: var(--accent);}
+    /* calendar pill name stays truncated */
     .pname{overflow:hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;}
 
     /* Projects table */
@@ -320,9 +350,16 @@
     tr.paid:hover td{
       background: rgba(102,255,166,0.13);
     }
-    tr.paid .paidMark{
-      color: var(--paid-text);
-      font-weight: 750;
+
+    /* Fixed project name column width and wrap to 2 lines */
+    td.nameCol{ width: 280px; max-width: 280px; }
+    .pnameWrap{
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow:hidden;
+      white-space: normal;
+      line-height: 1.15;
     }
 
     /* Modal */
@@ -337,7 +374,7 @@
     }
     .modalBack.open{display:flex}
     .modal{
-      width: min(560px, 100%);
+      width: min(580px, 100%);
       background: var(--card);
       border:1px solid rgba(255,255,255,0.10);
       border-radius: 16px;
@@ -412,15 +449,30 @@
       font-size:12px;
       line-height: 1.35;
     }
+
+    .tag{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.03);
+      color: rgba(232,236,247,0.85);
+      font-size:12px;
+      white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   </style>
 </head>
 <body>
   <header>
     <h1>Time Tracker</h1>
     <div class="sub">
-      Supabase + e-mail login. Повышенная ставка x1.5:
-      (1) выходной день целиком, (2) будни до 10:00 и с 19:00.
-      В календаре затемнены только ячейки с обычной ставкой (x1).
+      x1.5: (1) выходной целиком, (2) будни до 10:00 и с 19:00. <br/>
+      Клик по дате в заголовке: сделать день рабочим/выходным.
     </div>
   </header>
 
@@ -457,7 +509,7 @@
           <div class="controls">
             <button class="btn" id="goToday">Показать сегодня по центру</button>
             <span class="pillNote">
-              <span class="kbd">Клик</span> по дате в заголовке: переключить день <b>Рабочий ↔ Выходной</b> (влияет на x1.5)
+              <span class="kbd">Клик</span> по дате в заголовке: <b>Рабочий ↔ Выходной</b>
             </span>
           </div>
           <div class="controls">
@@ -489,27 +541,30 @@
       <div id="tab2" class="panel">
         <div class="row">
           <div class="controls">
-            <input class="input" id="projName" placeholder="Название проекта" />
-            <input class="input mono" id="projBudget" type="number" min="0" step="0.01" placeholder="Бюджет (число)" />
-            <button class="btn primary" id="addProject">Добавить проект</button>
+            <input class="input" id="projGroup" placeholder="Группа" style="min-width:180px;" list="groupsDatalist" />
+            <input class="input" id="projName" placeholder="Проект" style="min-width:240px;" />
+            <input class="input mono" id="projBudget" type="number" min="0" step="0.01" placeholder="Бюджет" style="min-width:140px;" />
+            <datalist id="groupsDatalist"></datalist>
+            <button class="btn primary" id="addProject">Добавить</button>
           </div>
           <div class="controls">
-            <button class="btn" id="recalc">Пересчитать часы</button>
+            <button class="btn" id="recalc">Пересчитать</button>
           </div>
         </div>
 
         <table>
           <thead>
             <tr>
-              <th style="width:10%">Оплачен</th>
-              <th style="width:18%">Проект</th>
-              <th class="nowrap" style="width:10%">Часы (реал)</th>
-              <th class="nowrap" style="width:12%">Часы (x1.5)</th>
+              <th style="width:7%">Оплачен</th>
+              <th style="width:8%">Группа</th>
+              <th style="width:28%">Проект</th>
+              <th class="nowrap" style="width:10%">Часы</th>
+              <th class="nowrap" style="width:10%">Часы x1.5</th>
               <th class="nowrap" style="width:10%">Бюджет</th>
-              <th class="nowrap" style="width:12%">Ставка</th>
-              <th style="width:22%">Комментарий</th>
-              <th style="width:6%">Архив</th>
-              <th style="width:10%"></th>
+              <th class="nowrap" style="width:10%">Ставка</th>
+              <th style="width:20%">Комментарий</th>
+              <th style="width:7%">Архив</th>
+              <th style="width:4%"></th>
             </tr>
           </thead>
           <tbody id="projectsTbody"></tbody>
@@ -526,7 +581,7 @@
     </div>
   </div>
 
-  <!-- Modal 1: cell tasks -->
+  <!-- Modal: cell tasks -->
   <div class="modalBack" id="modalBackCell">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modalHead">
@@ -557,7 +612,7 @@
     </div>
   </div>
 
-  <!-- Modal 2: day toggle -->
+  <!-- Modal: day toggle -->
   <div class="modalBack" id="modalBackDay">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modalHead">
@@ -569,7 +624,6 @@
         <div style="height:10px"></div>
 
         <div class="pillNote" id="modalExplainDay"></div>
-
         <div class="hint" id="modalHintDay" style="margin-top:10px;"></div>
       </div>
       <div class="modalFoot">
@@ -579,37 +633,55 @@
     </div>
   </div>
 
+  <!-- Modal: project group edit -->
+  <div class="modalBack" id="modalBackGroup">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modalHead">
+        <div class="modalTitle">Группа проекта</div>
+        <button class="btn ghost" id="modalCloseGroup" title="Закрыть (Esc)">✕</button>
+      </div>
+      <div class="modalBody">
+        <div class="small muted" id="modalMetaGroup"></div>
+        <div style="height:10px"></div>
+
+        <label class="small muted">Выбери из существующих или введи новую:</label>
+        <input class="input" id="groupInput" placeholder="Группа (например: Клиент А)" style="width:100%; margin-top:8px;" list="groupsDatalist2" />
+        <datalist id="groupsDatalist2"></datalist>
+
+        <div class="hint" id="modalHintGroup">Если введёшь новую группу — она появится в списке автоматически.</div>
+      </div>
+      <div class="modalFoot">
+        <button class="btn primary" id="saveGroup">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Supabase JS (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
-/** =======================
- *  Supabase config
- *  ======================= */
+/**
+ * ВАЖНО (один раз в Supabase):
+ * 1) В таблицу projects добавь колонку:
+ *    group_name text null
+ * 2) Таблица day_overrides должна существовать (как в предыдущей версии).
+ */
+
 const SUPABASE_URL = "https://jnynfpqneytabccplphc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_pYNWNHK7hKrTIJd0IzePuQ_uysAe1vd";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/** =======================
- *  Local state (in-memory)
- *  ======================= */
 let session = null;
 let userId = null;
 
-let projects = []; // from DB
+let projects = []; // {id,name,group,budget,comment,paid,archived,createdAt}
 let entries = {};  // key "date|slot" -> [pid1,pid2]
-
 let showArchived = false;
 
-// cache: which dates we already fetched entries for (to reduce calls)
 const loadedDates = new Set();
+const dayOverrides = new Map(); // dateISO -> is_premium boolean
 
-// day overrides: Map dateISO -> is_premium (true=выходной целиком, false=принудительно рабочий)
-const dayOverrides = new Map();
-
-/** =======================
- *  UI refs
- *  ======================= */
+// UI refs
 const authStatus = document.getElementById("authStatus");
 const loginBox = document.getElementById("loginBox");
 const emailInput = document.getElementById("emailInput");
@@ -617,9 +689,6 @@ const btnSendLink = document.getElementById("btnSendLink");
 const btnLogout = document.getElementById("btnLogout");
 const loginHint = document.getElementById("loginHint");
 
-/** =======================
- *  Helpers
- *  ======================= */
 function pad2(n){ return String(n).padStart(2,"0"); }
 function toISODate(d){
   const x = new Date(d); x.setHours(0,0,0,0);
@@ -658,58 +727,58 @@ function slotToLabel(slotIndex){
 }
 function isWeekendISO(dateISO){
   const d = fromISODate(dateISO);
-  const day = d.getDay(); // 0=вс, 6=сб
+  const day = d.getDay();
   return (day === 0 || day === 6);
 }
 function getOverride(dateISO){
   return dayOverrides.has(dateISO) ? dayOverrides.get(dateISO) : null;
 }
-
-/**
- * Эффективный “выходной целиком?”:
- * - если есть override: true/false
- * - иначе: по календарю (сб/вс выходные)
- */
 function isPremiumWholeDay(dateISO){
   const ov = getOverride(dateISO);
   if(ov === true) return true;
   if(ov === false) return false;
   return isWeekendISO(dateISO);
 }
-
-/**
- * Коэффициент x1.5 если:
- * - день "выходной целиком" (isPremiumWholeDay=true) -> весь день 1.5
- * - иначе (рабочий день) -> только по времени: до 10:00 и с 19:00
- */
 function slotMultiplier(dateISO, slotIndex){
   if(isPremiumWholeDay(dateISO)) return 1.5;
-
   const mins = (slotIndex * 30) % 1440;
   const hour = mins / 60;
   return (hour < 10 || hour >= 19) ? 1.5 : 1.0;
 }
-
 function projectById(id){ return projects.find(p=>p.id===id) || null; }
 function isProjectSelectable(p){ return !!p && p.archived !== true; }
 
-/** =======================
- *  Auth
- *  ======================= */
-async function refreshSession(){
-  const { data, error } = await sb.auth.getSession();
-  if(error){
-    console.error(error);
-    setAuthed(null);
-    return;
+function getAllGroups(){
+  const s = new Set();
+  for(const p of projects){
+    const g = (p.group || "").trim();
+    if(g) s.add(g);
   }
-  setAuthed(data.session);
+  return Array.from(s).sort((a,b)=>a.localeCompare(b, "ru"));
+}
+function refreshGroupDatalists(){
+  const list1 = document.getElementById("groupsDatalist");
+  const list2 = document.getElementById("groupsDatalist2");
+  const groups = getAllGroups();
+  list1.innerHTML = "";
+  list2.innerHTML = "";
+  for(const g of groups){
+    const o1 = document.createElement("option"); o1.value = g;
+    const o2 = document.createElement("option"); o2.value = g;
+    list1.appendChild(o1);
+    list2.appendChild(o2);
+  }
 }
 
+/** Auth */
+async function refreshSession(){
+  const { data, error } = await sb.auth.getSession();
+  if(error){ console.error(error); setAuthed(null); return; }
+  setAuthed(data.session);
+}
 function setAuthed(s){
   session = s;
   userId = s?.user?.id ?? null;
-
   if(userId){
     authStatus.textContent = `Вошёл: ${s.user.email}`;
     loginBox.classList.remove("open");
@@ -726,54 +795,36 @@ function setAuthed(s){
     renderAll(false);
   }
 }
-
 btnSendLink.addEventListener("click", async ()=>{
   const email = (emailInput.value || "").trim();
   if(!email){ alert("Введи e-mail."); return; }
-
   btnSendLink.disabled = true;
   loginHint.textContent = "Отправляю ссылку…";
-
   const redirectTo = window.location.origin + window.location.pathname;
-
-  const { error } = await sb.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: redirectTo }
-  });
-
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
   btnSendLink.disabled = false;
-
   if(error){
     console.error("OTP error:", error);
-    loginHint.textContent = "Ошибка отправки. Проверь email и настройки Supabase.";
+    loginHint.textContent = "Ошибка отправки.";
     alert("Ошибка отправки: " + (error?.message || "Unknown error"));
   } else {
     loginHint.textContent = "Ссылка отправлена. Открой письмо и нажми на ссылку.";
   }
 });
+btnLogout.addEventListener("click", async ()=>{ await sb.auth.signOut(); setAuthed(null); });
+sb.auth.onAuthStateChange((_event, s)=>{ setAuthed(s); });
 
-btnLogout.addEventListener("click", async ()=>{
-  await sb.auth.signOut();
-  setAuthed(null);
-});
-
-sb.auth.onAuthStateChange((_event, s)=>{
-  setAuthed(s);
-});
-
-/** =======================
- *  Data load/save (Supabase)
- *  ======================= */
+/** Supabase data */
 async function fetchProjects(){
   const { data, error } = await sb
     .from("projects")
     .select("*")
     .order("created_at", { ascending: false });
-
   if(error) throw error;
   projects = (data || []).map(p => ({
     id: p.id,
     name: p.name,
+    group: p.group_name ?? "",
     budget: Number(p.budget ?? 0),
     comment: p.comment ?? "",
     paid: !!p.paid,
@@ -781,23 +832,18 @@ async function fetchProjects(){
     createdAt: new Date(p.created_at).getTime()
   }));
 }
-
 async function fetchEntriesForDates(dateList){
   const dates = dateList.filter(d => !loadedDates.has(d));
   if(dates.length === 0) return;
-
   dates.forEach(d => loadedDates.add(d));
-
   const { data, error } = await sb
     .from("calendar_entries")
     .select("date,slot,task_index,project_id")
     .in("date", dates);
-
   if(error){
     dates.forEach(d => loadedDates.delete(d));
     throw error;
   }
-
   for(const row of (data || [])){
     const k = entryKey(row.date, row.slot);
     if(!entries[k]) entries[k] = [];
@@ -805,41 +851,34 @@ async function fetchEntriesForDates(dateList){
     entries[k][idx] = row.project_id;
   }
 }
-
 async function fetchDayOverridesForDates(dateList){
   const dates = dateList.filter(Boolean);
   if(!dates.length) return;
-
   const { data, error } = await sb
     .from("day_overrides")
     .select("date,is_premium")
     .in("date", dates);
-
   if(error) throw error;
-
-  // сбросим overrides для этих дат, потом добавим что пришло
   for(const d of dates) dayOverrides.delete(d);
   for(const row of (data || [])) dayOverrides.set(row.date, !!row.is_premium);
 }
-
 async function upsertDayOverride(dateISO, isPremium){
   const payload = { user_id: userId, date: dateISO, is_premium: !!isPremium };
   const { error } = await sb.from("day_overrides").upsert(payload, { onConflict: "user_id,date" });
   if(error) throw error;
   dayOverrides.set(dateISO, !!isPremium);
 }
-
 async function deleteDayOverride(dateISO){
   const { error } = await sb.from("day_overrides").delete().eq("date", dateISO);
   if(error) throw error;
   dayOverrides.delete(dateISO);
 }
-
 async function saveProjectToDb(p){
   const payload = {
     id: p.id,
     user_id: userId,
     name: p.name,
+    group_name: (p.group || "").trim() || null,
     budget: p.budget,
     comment: p.comment,
     paid: p.paid,
@@ -848,15 +887,12 @@ async function saveProjectToDb(p){
   const { error } = await sb.from("projects").upsert(payload, { onConflict: "id" });
   if(error) throw error;
 }
-
 async function deleteProjectFromDb(projectId){
   const { error: e1 } = await sb.from("projects").delete().eq("id", projectId);
   if(e1) throw e1;
-
   const { error: e2 } = await sb.from("calendar_entries").delete().eq("project_id", projectId);
   if(e2) console.warn(e2);
 }
-
 async function saveCellToDb(dateISO, slot, taskIds){
   const clean = (Array.isArray(taskIds) ? taskIds : [])
     .filter(Boolean)
@@ -868,7 +904,6 @@ async function saveCellToDb(dateISO, slot, taskIds){
     .delete()
     .eq("date", dateISO)
     .eq("slot", slot);
-
   if(delErr) throw delErr;
 
   if(clean.length > 0){
@@ -888,23 +923,18 @@ async function saveCellToDb(dateISO, slot, taskIds){
   else entries[k] = clean;
 }
 
-/** =======================
- *  App boot after login
- *  ======================= */
+/** Boot */
 async function bootAuthed(){
   await fetchProjects();
-
+  refreshGroupDatalists();
   rebuildColumns();
   await fetchEntriesForDates(columns.map(c=>c.iso));
   await fetchDayOverridesForDates(columns.map(c=>c.iso));
-
   renderAll(false);
   requestAnimationFrame(()=> centerToday());
 }
 
-/** =======================
- *  Tabs
- *  ======================= */
+/** Tabs */
 document.querySelectorAll(".tabbtn").forEach(btn=>{
   btn.addEventListener("click", ()=>{
     document.querySelectorAll(".tabbtn").forEach(b=>b.classList.remove("active"));
@@ -914,9 +944,7 @@ document.querySelectorAll(".tabbtn").forEach(btn=>{
   });
 });
 
-/** =======================
- *  Virtual calendar window
- *  ======================= */
+/** Virtual calendar */
 const ANCHOR_DATE = fromISODate("2026-01-01");
 const DAY_COL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--daycol"));
 const SLOT_START = 18;      // 09:00
@@ -924,11 +952,9 @@ const SLOT_END_EXCL = 54;   // 03:00(+1)
 
 let windowSize = 41;
 let windowStartIndex = todayIndex() - Math.floor(windowSize/2);
-
 function todayIndex(){ return daysBetween(ANCHOR_DATE, new Date()); }
 
-let columns = []; // {index,date,iso,isToday}
-
+let columns = [];
 const leftBody    = document.getElementById("leftBody");
 const hScroll     = document.getElementById("hScroll");
 const rightHeader = document.getElementById("rightHeader");
@@ -943,14 +969,12 @@ function rebuildColumns(){
     columns.push({ index: idx, date: d, iso: toISODate(d), isToday: idx===tIdx });
   }
 }
-
 function setTemplatesAndWidths(){
   rightHeader.style.gridTemplateColumns = `repeat(${columns.length}, var(--daycol))`;
   const w = Math.round(columns.length * DAY_COL);
   rightHeader.style.width = w + "px";
   rightBody.style.width   = w + "px";
 }
-
 function renderLeftTimes(){
   leftBody.innerHTML = "";
   for(let s=SLOT_START; s<SLOT_END_EXCL; s++){
@@ -960,32 +984,22 @@ function renderLeftTimes(){
     leftBody.appendChild(t);
   }
 }
-
 function renderRightHeader(){
   rightHeader.innerHTML = "";
-
   for(const col of columns){
     const el = document.createElement("div");
     el.className = "hcell" + (col.isToday ? " today" : "");
     el.textContent = fmtDayHeader(col.date);
-    el.dataset.date = col.iso;
-
-    // метки override
     const ov = getOverride(col.iso);
     if(ov === true) el.classList.add("userOff");
     if(ov === false) el.classList.add("userWork");
 
     el.style.cursor = "pointer";
-    el.title = "Клик: сделать день рабочим/выходным (влияет на x1.5)";
-
-    el.addEventListener("click", ()=>{
-      openDayModal(col.iso);
-    });
-
+    el.title = "Клик: сделать день рабочим/выходным";
+    el.addEventListener("click", ()=> openDayModal(col.iso));
     rightHeader.appendChild(el);
   }
 }
-
 function renderCellPills(taskIds){
   const wrap = document.createElement("div");
   wrap.className = "cellPills";
@@ -995,7 +1009,6 @@ function renderCellPills(taskIds){
     const p = projectById(pid);
     const name = p ? p.name : "— (проект удалён)";
     const color = stableColorFromString(pid);
-
     const pill = document.createElement("div");
     pill.className = "pill small";
     const dot = document.createElement("span");
@@ -1010,16 +1023,13 @@ function renderCellPills(taskIds){
   }
   return wrap;
 }
-
 function getTasksForCell(dateISO, slot){
   const v = entries[entryKey(dateISO, slot)];
   if(Array.isArray(v)) return v.slice(0,2).filter(Boolean);
   return [];
 }
-
 function renderRightBody(){
   rightBody.innerHTML = "";
-
   for(let s=SLOT_START; s<SLOT_END_EXCL; s++){
     const row = document.createElement("div");
     row.className = "gRow";
@@ -1027,16 +1037,12 @@ function renderRightBody(){
 
     for(const col of columns){
       const tasks = getTasksForCell(col.iso, s);
-
       const mult = slotMultiplier(col.iso, s);
 
       const cell = document.createElement("div");
       cell.className = "cell" + (mult === 1.0 ? " normal" : " premium");
 
-      if(tasks.length > 0){
-        cell.appendChild(renderCellPills(tasks));
-      }
-
+      if(tasks.length > 0) cell.appendChild(renderCellPills(tasks));
       cell.addEventListener("click", ()=> openCellModal(col.iso, s, tasks));
       row.appendChild(cell);
     }
@@ -1057,7 +1063,7 @@ function forwardHorizontalWheel(e){
 rightBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
 leftBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
 
-/* Infinite scroll left+right + fetch entries + overrides for new dates */
+/* Infinite scroll */
 let scrollTicking = false;
 hScroll.addEventListener("scroll", ()=>{
   if(scrollTicking) return;
@@ -1079,9 +1085,7 @@ hScroll.addEventListener("scroll", ()=>{
         try{
           await fetchEntriesForDates(columns.map(c=>c.iso));
           await fetchDayOverridesForDates(columns.map(c=>c.iso));
-        } catch(e){
-          console.error(e);
-        }
+        } catch(e){ console.error(e); }
       }
 
       renderAll(true);
@@ -1092,7 +1096,6 @@ hScroll.addEventListener("scroll", ()=>{
     }
   });
 });
-
 function centerToday(){
   const tIdx = todayIndex();
   const left = windowStartIndex;
@@ -1101,7 +1104,6 @@ function centerToday(){
   if(tIdx < left || tIdx > right){
     windowStartIndex = tIdx - Math.floor(windowSize/2);
     rebuildColumns();
-
     if(userId){
       Promise.all([
         fetchEntriesForDates(columns.map(c=>c.iso)),
@@ -1111,7 +1113,6 @@ function centerToday(){
       renderAll(true);
     }
   }
-
   const todayPos = tIdx - windowStartIndex;
   const targetCenter = todayPos * DAY_COL + DAY_COL/2;
   const desired = Math.max(0, targetCenter - (hScroll.clientWidth/2));
@@ -1119,9 +1120,7 @@ function centerToday(){
 }
 document.getElementById("goToday").addEventListener("click", centerToday);
 
-/** =======================
- *  Modal 1 (cell tasks)
- *  ======================= */
+/** Modal: cell tasks */
 const modalBackCell = document.getElementById("modalBackCell");
 const modalCloseCell = document.getElementById("modalCloseCell");
 const modalMetaCell = document.getElementById("modalMetaCell");
@@ -1143,24 +1142,23 @@ function fillSelectWithProjects(sel, selectable, includeNone){
   for(const p of selectable){
     const opt = document.createElement("option");
     opt.value = p.id;
-    opt.textContent = p.name;
+    const g = (p.group || "").trim();
+    opt.textContent = g ? `${g} — ${p.name}` : p.name;
     sel.appendChild(opt);
   }
 }
-
 function openCellModal(dateISO, slot, currentTasks){
   if(!userId){
     alert("Сначала войди по e-mail, чтобы сохранять данные в базе.");
     return;
   }
-
   modalCellState = { dateISO, slot };
   const mult = slotMultiplier(dateISO, slot);
   const tasks = (Array.isArray(currentTasks) ? currentTasks : []).slice(0,2);
   const isTwo = tasks.length === 2;
 
   modalMetaCell.textContent =
-    `${dateISO} • ${slotToLabel(slot)} – ${slotToLabel(slot+1)} (30 минут) • x${mult} • ` +
+    `${dateISO} • ${slotToLabel(slot)} – ${slotToLabel(slot+1)} • x${mult} • ` +
     (isTwo ? `2 задачи по 0.25ч` : `1 задача 0.5ч`);
 
   const selectable = projects.filter(isProjectSelectable);
@@ -1175,7 +1173,7 @@ function openCellModal(dateISO, slot, currentTasks){
     task1Select.disabled = true;
     task2Select.disabled = true;
     btnSaveCell.disabled = true;
-    modalHintCell.textContent = "Открой вкладку 2 и выключи “Архив” у проекта.";
+    modalHintCell.textContent = "Открой “Проекты” и выключи “Архив” у проекта.";
   } else {
     task1Select.disabled = false;
     task2Select.disabled = false;
@@ -1199,7 +1197,6 @@ function openCellModal(dateISO, slot, currentTasks){
   modalBackCell.classList.add("open");
   setTimeout(()=> task1Select.focus(), 0);
 }
-
 function closeCellModal(){ modalBackCell.classList.remove("open"); }
 modalCloseCell.addEventListener("click", closeCellModal);
 modalBackCell.addEventListener("click", (e)=>{ if(e.target === modalBackCell) closeCellModal(); });
@@ -1221,10 +1218,9 @@ btnSaveCell.addEventListener("click", async ()=>{
     renderAll(true);
   } catch(e){
     console.error(e);
-    alert("Ошибка сохранения ячейки в базу. Проверь RLS и что ты авторизован.");
+    alert("Ошибка сохранения ячейки.");
   }
 });
-
 btnClearCell.addEventListener("click", async ()=>{
   try{
     await saveCellToDb(modalCellState.dateISO, modalCellState.slot, []);
@@ -1236,9 +1232,7 @@ btnClearCell.addEventListener("click", async ()=>{
   }
 });
 
-/** =======================
- *  Modal 2 (day toggle)
- *  ======================= */
+/** Modal: day toggle */
 const modalBackDay = document.getElementById("modalBackDay");
 const modalCloseDay = document.getElementById("modalCloseDay");
 const modalMetaDay = document.getElementById("modalMetaDay");
@@ -1246,53 +1240,40 @@ const modalExplainDay = document.getElementById("modalExplainDay");
 const modalHintDay = document.getElementById("modalHintDay");
 const btnResetDay = document.getElementById("resetDay");
 const btnToggleDay = document.getElementById("toggleDay");
-
 let modalDayState = { dateISO:null };
 
 function openDayModal(dateISO){
   if(!userId){
-    alert("Сначала войди по e-mail, чтобы сохранять изменения дней в базе.");
+    alert("Сначала войди по e-mail.");
     return;
   }
-
   modalDayState = { dateISO };
 
   const ov = getOverride(dateISO); // true/false/null
   const weekendDefault = isWeekendISO(dateISO);
   const effectivePremium = isPremiumWholeDay(dateISO);
 
-  // текущий статус
   const curLabel = effectivePremium ? "Выходной (x1.5 весь день)" : "Рабочий (x1.5 только до 10:00 и с 19:00)";
   const baseLabel = weekendDefault ? "По умолчанию: выходной (сб/вс)" : "По умолчанию: рабочий";
 
   modalMetaDay.textContent = `${dateISO} • ${fmtDayHeader(fromISODate(dateISO))}`;
   modalExplainDay.textContent = `${baseLabel}. Сейчас: ${curLabel}.`;
 
-  // кнопка toggle: переворачивает эффективный статус
   btnToggleDay.textContent = effectivePremium ? "Сделать рабочим" : "Сделать выходным";
-
-  // reset доступен только если есть override
   btnResetDay.disabled = (ov === null);
-
-  if(ov === null){
-    modalHintDay.textContent = "Сбросить недоступно — для этого дня нет переопределения.";
-  } else {
-    modalHintDay.textContent = "Сбросить — вернёт поведение “по умолчанию” (сб/вс выходные, будни рабочие).";
-  }
+  modalHintDay.textContent = (ov === null)
+    ? "Для этого дня нет переопределения."
+    : "Сбросить — вернёт поведение “по умолчанию”.";
 
   modalBackDay.classList.add("open");
 }
-
 async function applyToggleDay(){
   const dateISO = modalDayState.dateISO;
   const weekendDefault = isWeekendISO(dateISO);
   const effectivePremium = isPremiumWholeDay(dateISO);
-
-  // хотим противоположное
   const desired = !effectivePremium;
+  const defaultPremium = weekendDefault;
 
-  // если desired совпадает с default -> override не нужен, просто удаляем
-  const defaultPremium = weekendDefault; // сб/вс = премиум целиком
   try{
     if(desired === defaultPremium){
       await deleteDayOverride(dateISO);
@@ -1304,10 +1285,9 @@ async function applyToggleDay(){
     renderAll(true);
   } catch(e){
     console.error(e);
-    alert("Не получилось сохранить изменение дня. Проверь RLS и авторизацию.");
+    alert("Не получилось сохранить изменение дня.");
   }
 }
-
 async function applyResetDay(){
   const dateISO = modalDayState.dateISO;
   try{
@@ -1317,29 +1297,67 @@ async function applyResetDay(){
     renderAll(true);
   } catch(e){
     console.error(e);
-    alert("Не получилось сбросить день. Проверь RLS и авторизацию.");
+    alert("Не получилось сбросить день.");
   }
 }
-
 function closeDayModal(){ modalBackDay.classList.remove("open"); }
-
 modalCloseDay.addEventListener("click", closeDayModal);
 modalBackDay.addEventListener("click", (e)=>{ if(e.target === modalBackDay) closeDayModal(); });
 btnToggleDay.addEventListener("click", applyToggleDay);
 btnResetDay.addEventListener("click", applyResetDay);
 
-/** =======================
- *  Global keyboard (Esc closes any modal)
- *  ======================= */
+/** Modal: group edit */
+const modalBackGroup = document.getElementById("modalBackGroup");
+const modalCloseGroup = document.getElementById("modalCloseGroup");
+const modalMetaGroup = document.getElementById("modalMetaGroup");
+const groupInput = document.getElementById("groupInput");
+const saveGroupBtn = document.getElementById("saveGroup");
+let modalGroupState = { projectId:null };
+
+function openGroupModal(projectId){
+  const p = projectById(projectId);
+  if(!p) return;
+
+  modalGroupState = { projectId };
+  modalMetaGroup.textContent = `Проект: ${p.name}`;
+  groupInput.value = (p.group || "").trim();
+  refreshGroupDatalists();
+
+  modalBackGroup.classList.add("open");
+  setTimeout(()=> groupInput.focus(), 0);
+}
+function closeGroupModal(){ modalBackGroup.classList.remove("open"); }
+modalCloseGroup.addEventListener("click", closeGroupModal);
+modalBackGroup.addEventListener("click", (e)=>{ if(e.target === modalBackGroup) closeGroupModal(); });
+saveGroupBtn.addEventListener("click", async ()=>{
+  const pid = modalGroupState.projectId;
+  const p = projectById(pid);
+  if(!p) return;
+
+  p.group = (groupInput.value || "").trim();
+
+  try{
+    await saveProjectToDb(p);
+    await fetchProjects();
+    refreshGroupDatalists();
+    closeGroupModal();
+    renderAll(true);
+  } catch(e){
+    console.error(e);
+    alert("Ошибка сохранения группы.");
+  }
+});
+
+/** Esc closes any modal */
 document.addEventListener("keydown", (e)=>{
   if(e.key !== "Escape") return;
   if(modalBackCell.classList.contains("open")) closeCellModal();
   if(modalBackDay.classList.contains("open")) closeDayModal();
+  if(modalBackGroup.classList.contains("open")) closeGroupModal();
 });
 
-/** =======================
- *  Projects (sorted newest first, archive toggle)
- *  ======================= */
+/** Projects */
+const projGroup = document.getElementById("projGroup");
 const projName = document.getElementById("projName");
 const projBudget = document.getElementById("projBudget");
 const addProjectBtn = document.getElementById("addProject");
@@ -1350,7 +1368,6 @@ function setArchiveButtonLabel(){
   toggleArchiveBtn.textContent = showArchived ? "Скрыть архивные" : "Показать архивные";
 }
 setArchiveButtonLabel();
-
 toggleArchiveBtn.addEventListener("click", ()=>{
   showArchived = !showArchived;
   setArchiveButtonLabel();
@@ -1360,26 +1377,30 @@ toggleArchiveBtn.addEventListener("click", ()=>{
 addProjectBtn.addEventListener("click", async ()=>{
   if(!userId){ alert("Сначала войди по e-mail."); return; }
 
+  const group = (projGroup.value || "").trim();
   const name = (projName.value || "").trim();
   const budget = Number(projBudget.value);
+
   if(!name){ alert("Введите название проекта."); return; }
   if(!Number.isFinite(budget) || budget < 0){ alert("Введите бюджет числом (0 или больше)."); return; }
 
   const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "_" + Math.random().toString(16).slice(2);
-  const p = { id, name, budget, comment:"", paid:false, archived:false, createdAt: Date.now() };
+
+  const p = { id, name, group, budget, comment:"", paid:false, archived:false, createdAt: Date.now() };
 
   try{
     await saveProjectToDb(p);
     await fetchProjects();
+    refreshGroupDatalists();
+    projGroup.value = "";
     projName.value = "";
     projBudget.value = "";
     renderAll(true);
   } catch(e){
     console.error(e);
-    alert("Ошибка сохранения проекта. Проверь RLS/авторизацию.");
+    alert("Ошибка сохранения проекта.");
   }
 });
-
 document.getElementById("recalc").addEventListener("click", ()=> renderAll(true));
 
 function calcHoursByProject(){
@@ -1411,6 +1432,8 @@ function calcHoursByProject(){
 }
 
 function renderProjects(){
+  refreshGroupDatalists();
+
   const map = calcHoursByProject();
   projectsTbody.innerHTML = "";
 
@@ -1419,7 +1442,7 @@ function renderProjects(){
   if(visibleRows.length === 0){
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 9;
+    td.colSpan = 10;
     td.className = "muted";
     td.textContent = showArchived
       ? "Проектов нет."
@@ -1436,32 +1459,45 @@ function renderProjects(){
     const tr = document.createElement("tr");
     if(p.paid) tr.classList.add("paid");
 
-    // Paid
+    // Paid checkbox (no text)
     const tdPaid = document.createElement("td");
-    const paidWrap = document.createElement("label");
-    paidWrap.className = "cb";
     const paidCb = document.createElement("input");
+    paidCb.className = "ck";
     paidCb.type = "checkbox";
     paidCb.checked = !!p.paid;
-    paidWrap.appendChild(paidCb);
-    const paidLbl = document.createElement("span");
-    paidLbl.className = p.paid ? "paidMark" : "";
-    paidLbl.textContent = "Оплачен";
-    paidWrap.appendChild(paidLbl);
-    tdPaid.appendChild(paidWrap);
+    tdPaid.appendChild(paidCb);
 
-    // Name
+    // Group (click -> modal)
+    const tdGroup = document.createElement("td");
+    const g = (p.group || "").trim();
+    const gTag = document.createElement("span");
+    gTag.className = "tag";
+    gTag.style.cursor = "pointer";
+    gTag.title = "Клик: изменить группу";
+    gTag.textContent = g ? g : "—";
+    gTag.addEventListener("click", ()=> openGroupModal(p.id));
+    tdGroup.appendChild(gTag);
+
+    // Project name (fixed width, wrap to 2 lines)
     const tdName = document.createElement("td");
-    const pill = document.createElement("span");
-    pill.className = "pill";
+    tdName.className = "nameCol";
+    const wrap = document.createElement("div");
+    wrap.style.display = "flex";
+    wrap.style.alignItems = "flex-start";
+    wrap.style.gap = "8px";
+
     const dot = document.createElement("span");
     dot.className = "dot";
     dot.style.background = stableColorFromString(p.id);
-    const text = document.createElement("span");
-    text.className = "pname";
-    text.textContent = p.name;
-    pill.appendChild(dot); pill.appendChild(text);
-    tdName.appendChild(pill);
+    dot.style.marginTop = "4px";
+
+    const nm = document.createElement("div");
+    nm.className = "pnameWrap";
+    nm.textContent = p.name;
+
+    wrap.appendChild(dot);
+    wrap.appendChild(nm);
+    tdName.appendChild(wrap);
 
     // Hours
     const tdReal = document.createElement("td");
@@ -1472,10 +1508,33 @@ function renderProjects(){
     tdW.className = "mono";
     tdW.textContent = hours.weighted.toFixed(2);
 
-    // Budget
+    // Budget inline numeric input (no separate popup)
     const tdBudget = document.createElement("td");
-    tdBudget.className = "mono";
-    tdBudget.textContent = Number(p.budget).toFixed(2);
+    const bIn = document.createElement("input");
+    bIn.className = "input mono";
+    bIn.type = "number";
+    bIn.min = "0";
+    bIn.step = "0.01";
+    bIn.value = Number(p.budget).toFixed(2);
+    bIn.style.width = "120px";
+    bIn.addEventListener("change", async ()=>{
+      const v = Number(bIn.value);
+      if(!Number.isFinite(v) || v < 0){
+        bIn.value = Number(p.budget).toFixed(2);
+        alert("Бюджет должен быть числом (0 или больше).");
+        return;
+      }
+      p.budget = v;
+      try{
+        await saveProjectToDb(p);
+        await fetchProjects();
+        renderAll(true);
+      } catch(e){
+        console.error(e);
+        alert("Ошибка сохранения бюджета.");
+      }
+    });
+    tdBudget.appendChild(bIn);
 
     // Rate
     const tdRate = document.createElement("td");
@@ -1494,80 +1553,28 @@ function renderProjects(){
     });
     tdComment.appendChild(ta);
 
-    // Archive
+    // Archive checkbox (no text)
     const tdArch = document.createElement("td");
-    const archWrap = document.createElement("label");
-    archWrap.className = "cb";
     const archCb = document.createElement("input");
+    archCb.className = "ck";
     archCb.type = "checkbox";
     archCb.checked = !!p.archived;
-    archWrap.appendChild(archCb);
-    const archLbl = document.createElement("span");
-    archLbl.textContent = "Архив";
-    archWrap.appendChild(archLbl);
-    tdArch.appendChild(archWrap);
+    tdArch.appendChild(archCb);
 
-    paidCb.addEventListener("change", async ()=>{
-      p.paid = paidCb.checked;
-      paidLbl.className = p.paid ? "paidMark" : "";
-      if(p.paid){
-        p.archived = true;
-        archCb.checked = true;
-      }
-      try{
-        await saveProjectToDb(p);
-        await fetchProjects();
-        renderAll(true);
-      } catch(e){
-        console.error(e);
-        alert("Ошибка сохранения проекта.");
-      }
-    });
-
-    archCb.addEventListener("change", async ()=>{
-      p.archived = archCb.checked;
-      try{
-        await saveProjectToDb(p);
-        await fetchProjects();
-        renderAll(true);
-      } catch(e){
-        console.error(e);
-        alert("Ошибка сохранения проекта.");
-      }
-    });
-
-    // Actions
+    // Delete button "X"
     const tdActions = document.createElement("td");
-    const editBtn = document.createElement("button");
-    editBtn.className = "btn";
-    editBtn.textContent = "Бюджет";
-    editBtn.addEventListener("click", async ()=>{
-      const next = prompt(`Новый бюджет для "${p.name}" (число):`, String(p.budget));
-      if(next === null) return;
-      const b = Number(next);
-      if(!Number.isFinite(b) || b < 0){ alert("Бюджет должен быть числом (0 или больше)."); return; }
-      p.budget = b;
-      try{
-        await saveProjectToDb(p);
-        await fetchProjects();
-        renderAll(true);
-      } catch(e){
-        console.error(e);
-        alert("Ошибка сохранения бюджета.");
-      }
-    });
-
     const delBtn = document.createElement("button");
-    delBtn.className = "btn danger";
-    delBtn.textContent = "Удалить";
+    delBtn.className = "btn danger icon";
+    delBtn.textContent = "✕";
+    delBtn.title = "Удалить проект";
     delBtn.addEventListener("click", async ()=>{
       const ok = confirm(`Удалить проект "${p.name}"?\nЯчейки с этим проектом будут очищены.`);
       if(!ok) return;
       try{
         await deleteProjectFromDb(p.id);
         await fetchProjects();
+        refreshGroupDatalists();
 
-        // clear local cache entries for UI correctness
         for(const kk in entries){
           const arr = entries[kk];
           if(Array.isArray(arr) && arr.includes(p.id)){
@@ -1582,12 +1589,40 @@ function renderProjects(){
         alert("Ошибка удаления проекта.");
       }
     });
-
-    tdActions.appendChild(editBtn);
-    tdActions.appendChild(document.createTextNode(" "));
     tdActions.appendChild(delBtn);
 
+    paidCb.addEventListener("change", async ()=>{
+      p.paid = paidCb.checked;
+      if(p.paid){
+        p.archived = true;
+        archCb.checked = true;
+      }
+      try{
+        await saveProjectToDb(p);
+        await fetchProjects();
+        refreshGroupDatalists();
+        renderAll(true);
+      } catch(e){
+        console.error(e);
+        alert("Ошибка сохранения проекта.");
+      }
+    });
+
+    archCb.addEventListener("change", async ()=>{
+      p.archived = archCb.checked;
+      try{
+        await saveProjectToDb(p);
+        await fetchProjects();
+        refreshGroupDatalists();
+        renderAll(true);
+      } catch(e){
+        console.error(e);
+        alert("Ошибка сохранения проекта.");
+      }
+    });
+
     tr.appendChild(tdPaid);
+    tr.appendChild(tdGroup);
     tr.appendChild(tdName);
     tr.appendChild(tdReal);
     tr.appendChild(tdW);
@@ -1601,9 +1636,7 @@ function renderProjects(){
   }
 }
 
-/** =======================
- *  Render all
- *  ======================= */
+/** Render all */
 function renderAll(keepScroll){
   const savedV = keepScroll ? rightBody.scrollTop : 0;
   const savedH = keepScroll ? hScroll.scrollLeft : 0;
@@ -1622,9 +1655,7 @@ function renderAll(keepScroll){
   }
 }
 
-/** =======================
- *  Init
- *  ======================= */
+/** Init */
 renderAll(false);
 refreshSession().catch(console.error);
 </script>
