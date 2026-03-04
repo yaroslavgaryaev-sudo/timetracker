@@ -235,11 +235,13 @@
       overflow: hidden;
     }
     /* Повышенная ставка (x1.5): подсветка */
-.cell.premium{
-  background: rgba(255, 214, 106, 0.10);
+/* Обычная ставка (x1) — слегка темнее */
+.cell.normal{
+  background: rgba(0,0,0,0.22);
 }
-.cell.premium:hover{
-  background: rgba(255, 214, 106, 0.14);
+
+.cell.normal:hover{
+  background: rgba(0,0,0,0.28);
 }
     .cell:hover{background: rgba(255,255,255,0.05)}
 
@@ -915,7 +917,7 @@ function renderRightBody(){
 
 const cell = document.createElement("div");
 const mult = slotMultiplier(col.iso, s);
-cell.className = "cell" + (mult > 1.0 ? " premium" : "");
+cell.className = "cell" + (mult === 1.0 ? " normal" : "");
 
       if(tasks.length > 0){
         cell.appendChild(renderCellPills(tasks));
