@@ -234,6 +234,13 @@
       line-height: 1;
       overflow: hidden;
     }
+    /* Повышенная ставка (x1.5): подсветка */
+.cell.premium{
+  background: rgba(255, 214, 106, 0.10);
+}
+.cell.premium:hover{
+  background: rgba(255, 214, 106, 0.14);
+}
     .cell:hover{background: rgba(255,255,255,0.05)}
 
     .cellPills{
@@ -586,7 +593,15 @@ function slotToLabel(slotIndex){
   const base = `${pad2(h)}:${pad2(m)}`;
   return dayPlus === 0 ? base : `${base} (+1)`;
 }
-function slotMultiplier(slotIndex){
+function slotMultiplier(dateISO, slotIndex){
+  // Выходные: всегда x1.5
+  // dateISO формата YYYY-MM-DD
+  const d = fromISODate(dateISO);
+  const day = d.getDay(); // 0=вс, 6=сб
+  const isWeekend = (day === 0 || day === 6);
+  if(isWeekend) return 1.5;
+
+  // Будни: как раньше — до 10:00 и с 19:00
   const mins = (slotIndex * 30) % 1440;
   const hour = mins / 60;
   return (hour < 10 || hour >= 19) ? 1.5 : 1.0;
@@ -898,8 +913,9 @@ function renderRightBody(){
     for(const col of columns){
       const tasks = getTasksForCell(col.iso, s);
 
-      const cell = document.createElement("div");
-      cell.className = "cell";
+const cell = document.createElement("div");
+const mult = slotMultiplier(col.iso, s);
+cell.className = "cell" + (mult > 1.0 ? " premium" : "");
 
       if(tasks.length > 0){
         cell.appendChild(renderCellPills(tasks));
@@ -1015,7 +1031,7 @@ function openCellModal(dateISO, slot, currentTasks){
   }
 
   modalState = { dateISO, slot };
-  const mult = slotMultiplier(slot);
+  const mult = slotMultiplier(dateISO, slot);
   const tasks = (Array.isArray(currentTasks) ? currentTasks : []).slice(0,2);
   const isTwo = tasks.length === 2;
 
@@ -1150,7 +1166,8 @@ function calcHoursByProject(){
     if(!Array.isArray(taskIds) || taskIds.length === 0) continue;
 
     const slot = Number(k.split("|")[1]);
-    const mult = slotMultiplier(slot);
+    const dateISO = k.split("|")[0];
+const mult = slotMultiplier(dateISO, slot);
 
     const n = Math.min(2, taskIds.length);
     const realPer = (n === 2) ? 0.25 : 0.5;
