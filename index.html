@@ -1154,7 +1154,7 @@ function fillSelectWithProjects(sel, selectable, includeNone){
     const opt = document.createElement("option");
     opt.value = p.id;
     const g = (p.group || "").trim();
-    opt.textContent = g ? `${g} — ${p.name}` : p.name;
+    opt.textContent = g ? `${p.name}` : p.name;
     sel.appendChild(opt);
   }
 }
