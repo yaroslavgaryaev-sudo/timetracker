@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time Tracker (лента дат + проекты)</title>
+  <style>
+    :root{
+      --bg:#0b0c10; --card:#111319; --muted:#8b93a7; --text:#e8ecf7;
+      --accent:#6aa6ff; --danger:#ff6a6a;
+      --radius:14px;
+      --timecol: 110px;
+      --daycol: 170px;
+      --paid-bg: rgba(102,255,166,0.10);
+      --paid-text: rgba(170,255,210,0.95);
+      --rowh: 30px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 700px at 20% -10%, #1a2450 0%, transparent 60%),
+                  radial-gradient(900px 600px at 95% 0%, #2a1a50 0%, transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+    header{ padding:18px 18px 8px; max-width:1280px; margin:0 auto; }
+    h1{margin:0; font-size:18px; font-weight:700}
+    .sub{margin-top:6px; color:var(--muted); font-size:12.5px; line-height:1.4}
+    .wrap{max-width:1280px; margin:0 auto; padding:10px 18px 26px;}
+
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 22%), var(--card);
+      border:1px solid rgba(255,255,255,0.07);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      overflow:hidden;
+    }
+    .tabs{
+      display:flex; gap:8px; padding:10px;
+      border-bottom:1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.02);
+    }
+    .tabbtn{
+      border:1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      padding:10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight:650;
+      font-size:13px;
+    }
+    .tabbtn.active{
+      background: rgba(106,166,255,0.18);
+      border-color: rgba(106,166,255,0.5);
+    }
+    .panel{display:none; padding:14px}
+    .panel.active{display:block}
+
+    .row{
+      display:flex; flex-wrap:wrap; gap:10px;
+      align-items:center; justify-content:space-between;
+      margin-bottom:12px;
+    }
+    .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+
+    .btn{
+      border:1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      padding:9px 11px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight:650;
+      font-size:13px;
+    }
+    .btn:hover{background: rgba(255,255,255,0.06)}
+    .btn.primary{
+      background: rgba(106,166,255,0.18);
+      border-color: rgba(106,166,255,0.5);
+    }
+    .btn.danger{
+      background: rgba(255,106,106,0.16);
+      border-color: rgba(255,106,106,0.5);
+    }
+    .btn.ghost{background: transparent}
+
+    .input, .select, .textarea{
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.18);
+      color: var(--text);
+      padding:9px 10px;
+      border-radius: 12px;
+      font-size:13px;
+      outline:none;
+    }
+    .textarea{resize: vertical; min-height: 38px; max-height: 160px;}
+    .input::placeholder{color: rgba(139,147,167,0.85)}
+    .muted{color: var(--muted)}
+    .small{font-size:12px}
+    .mono{font-variant-numeric: tabular-nums;}
+    .nowrap{white-space:nowrap}
+
+    .cb{
+      display:inline-flex; align-items:center; gap:8px;
+      user-select:none;
+      font-size:12px;
+      color: var(--muted);
+    }
+    .cb input{ transform: translateY(1px); }
+
+    /* GRID */
+    .gridWrap{
+      border:1px solid rgba(255,255,255,0.09);
+      border-radius: 14px;
+      overflow:hidden;
+      background: rgba(0,0,0,0.12);
+    }
+    .gridShell{ display:flex; width:100%; }
+
+    /* Left time column */
+    .leftCol{
+      width: var(--timecol);
+      flex: 0 0 var(--timecol);
+      border-right:1px solid rgba(255,255,255,0.10);
+      background: rgba(17,19,25,0.95);
+      backdrop-filter: blur(6px);
+      position: relative;
+      z-index: 10;
+    }
+    .leftHeader{
+      padding:10px 8px;
+      border-bottom:1px solid rgba(255,255,255,0.09);
+      font-weight:700;
+      font-size:12.5px;
+      color: var(--muted);
+    }
+    .leftBody{
+      max-height: 70vh;
+      overflow-y: hidden;
+    }
+    .tcell{
+      padding: 0 8px;
+      height: var(--rowh);
+      min-height: var(--rowh);
+      max-height: var(--rowh);
+      border-bottom:1px solid rgba(255,255,255,0.06);
+      font-size:12px;
+      color: var(--muted);
+      display:flex;
+      align-items:center;
+      line-height: 1;
+    }
+
+    /* Right side */
+    .rightCol{ flex: 1 1 auto; min-width: 0; }
+    .hScroll{
+      overflow-x:auto;
+      overflow-y:hidden;
+      width:100%;
+    }
+
+    .rightHeader{
+      display:grid;
+      border-bottom: 1px solid rgba(255,255,255,0.09);
+      background: rgba(255,255,255,0.02);
+    }
+    .hcell{
+      padding:10px 8px;
+      border-right:1px solid rgba(255,255,255,0.08);
+      font-weight:700;
+      font-size:12.5px;
+      color: var(--text);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .hcell.today{
+      outline: 2px solid rgba(106,166,255,0.45);
+      outline-offset: -2px;
+      background: rgba(106,166,255,0.10);
+    }
+
+    .rightBody{
+      max-height: 70vh;
+      overflow-y:auto;
+      overflow-x:hidden;
+    }
+    .gRow{
+      display:grid;
+      height: var(--rowh);
+      min-height: var(--rowh);
+      max-height: var(--rowh);
+      border-bottom:1px solid rgba(255,255,255,0.06);
+      width: 100%;
+    }
+    .cell{
+      padding: 0 6px;
+      height: 100%;
+      border-right:1px solid rgba(255,255,255,0.06);
+      font-size:12px;
+      background: rgba(0,0,0,0.10);
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      gap:4px;
+      min-width: 0;
+      line-height: 1;
+      overflow: hidden;
+    }
+    .cell:hover{background: rgba(255,255,255,0.05)}
+
+    .cellPills{
+      display:flex;
+      gap:4px;
+      width:100%;
+      min-width:0;
+      overflow:hidden;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      max-width: 100%;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      overflow:hidden;
+      min-width: 0;
+      flex: 1 1 0;
+    }
+    .pill.small{ padding: 2px 6px; font-size:11px; }
+    .dot{width:9px; height:9px; border-radius:999px; flex: 0 0 auto; background: var(--accent);}
+    .pname{overflow:hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;}
+
+    /* Projects table */
+    table{
+      width:100%;
+      border-collapse: collapse;
+      overflow:hidden;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,0.09);
+    }
+    th, td{
+      border-bottom:1px solid rgba(255,255,255,0.07);
+      padding:10px 10px;
+      text-align:left;
+      font-size:13px;
+      vertical-align: top;
+    }
+    th{
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      font-weight:800;
+      font-size:12px;
+      letter-spacing:0.2px;
+      text-transform: uppercase;
+    }
+    tr:hover td{background: rgba(255,255,255,0.03)}
+
+    tr.paid td{
+      background: var(--paid-bg);
+      border-bottom-color: rgba(102,255,166,0.18);
+    }
+    tr.paid:hover td{
+      background: rgba(102,255,166,0.13);
+    }
+    tr.paid .paidMark{
+      color: var(--paid-text);
+      font-weight: 750;
+    }
+
+    /* Modal */
+    .modalBack{
+      position: fixed; inset:0;
+      background: rgba(0,0,0,0.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding: 18px;
+      z-index: 50;
+    }
+    .modalBack.open{display:flex}
+    .modal{
+      width: min(560px, 100%);
+      background: var(--card);
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius: 16px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+      overflow:hidden;
+    }
+    .modalHead{
+      padding: 14px 14px 10px;
+      border-bottom:1px solid rgba(255,255,255,0.08);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .modalTitle{font-weight:850; font-size:14px}
+    .modalBody{padding: 14px}
+    .modalFoot{
+      padding: 12px 14px;
+      border-top:1px solid rgba(255,255,255,0.08);
+      display:flex;
+      gap:10px;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+    }
+    .hint{ color: var(--muted); font-size:12px; line-height:1.4; margin-top:8px; }
+    .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      border:1px solid rgba(255,255,255,0.12);
+      border-bottom-color: rgba(255,255,255,0.20);
+      background: rgba(255,255,255,0.04);
+      padding: 2px 6px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .twoCols{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+    @media (max-width:520px){
+      .twoCols{ grid-template-columns: 1fr; }
+    }
+
+    .footerRow{
+      margin-top: 10px;
+      display:flex;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Time Tracker</h1>
+    <div class="sub">
+      Вкладка 1 — лента дат (влево и вправо бесконечно), строки по 30 минут: 09:00 → 03:00 (+1 день).<br>
+      Вкладка 2 — проекты: бюджет, реальные часы, часы с коэффициентом (x1.5: &lt;10:00 и ≥19:00), ставка = бюджет / часы(x1.5).<br>
+      В одной ячейке можно хранить 1 или 2 задачи: 1 задача = 0.5ч, 2 задачи = по 0.25ч каждая.
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="tabs">
+        <button class="tabbtn active" data-tab="tab1">Вкладка 1 — Календарь</button>
+        <button class="tabbtn" data-tab="tab2">Вкладка 2 — Проекты</button>
+      </div>
+
+      <div id="tab1" class="panel active">
+        <div class="row">
+          <div class="controls">
+            <button class="btn" id="goToday">Показать сегодня по центру</button>
+            <span class="small muted">Горизонтально прокручивай — даты подгружаются слева и справа.</span>
+          </div>
+          <div class="controls">
+            <span class="small muted"><span class="kbd">Esc</span> — закрыть окно выбора.</span>
+          </div>
+        </div>
+
+        <div class="gridWrap">
+          <div class="gridShell">
+            <div class="leftCol">
+              <div class="leftHeader">Время</div>
+              <div class="leftBody" id="leftBody"></div>
+            </div>
+
+            <div class="rightCol">
+              <div class="hScroll" id="hScroll">
+                <div class="rightHeader" id="rightHeader"></div>
+                <div class="rightBody" id="rightBody"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hint">
+          Данные сохраняются в этом браузере (localStorage). На другом устройстве/браузере будет отдельная копия.
+        </div>
+      </div>
+
+      <div id="tab2" class="panel">
+        <div class="row">
+          <div class="controls">
+            <input class="input" id="projName" placeholder="Название проекта" />
+            <input class="input mono" id="projBudget" type="number" min="0" step="0.01" placeholder="Бюджет (число)" />
+            <button class="btn primary" id="addProject">Добавить проект</button>
+          </div>
+          <div class="controls">
+            <button class="btn" id="recalc">Пересчитать часы</button>
+            <button class="btn danger" id="resetAll">Сбросить всё</button>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:10%">Оплачен</th>
+              <th style="width:18%">Проект</th>
+              <th class="nowrap" style="width:10%">Часы (реал)</th>
+              <th class="nowrap" style="width:12%">Часы (x1.5)</th>
+              <th class="nowrap" style="width:10%">Бюджет</th>
+              <th class="nowrap" style="width:12%">Ставка</th>
+              <th style="width:22%">Комментарий</th>
+              <th style="width:6%">Архив</th>
+              <th style="width:10%"></th>
+            </tr>
+          </thead>
+          <tbody id="projectsTbody"></tbody>
+        </table>
+
+        <div class="footerRow">
+          <button class="btn" id="toggleArchive">Показать архивные</button>
+        </div>
+
+        <div class="hint">
+          Проекты сортируются по времени добавления (новые сверху).
+          По умолчанию архив скрыт. Кнопка “Показать архивные” показывает/скрывает архивные строки.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modalBack" id="modalBack">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modalHead">
+        <div class="modalTitle">Задачи в ячейке</div>
+        <button class="btn ghost" id="modalClose" title="Закрыть (Esc)">✕</button>
+      </div>
+      <div class="modalBody">
+        <div class="small muted" id="modalMeta"></div>
+        <div style="height:10px"></div>
+
+        <div class="twoCols">
+          <div>
+            <label class="small muted">Задача 1:</label>
+            <select class="select" id="task1Select" style="width:100%"></select>
+          </div>
+          <div>
+            <label class="small muted">Задача 2 (опционально):</label>
+            <select class="select" id="task2Select" style="width:100%"></select>
+          </div>
+        </div>
+
+        <div class="hint" id="modalHint"></div>
+      </div>
+      <div class="modalFoot">
+        <button class="btn" id="clearCell">Очистить</button>
+        <button class="btn primary" id="saveCell">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* Storage */
+const LS_PROJECTS = "tt_projects_v10";
+const LS_ENTRIES  = "tt_entries_v10";
+const LS_WINDOW_START = "tt_window_start_v10";
+const LS_WINDOW_SIZE = "tt_window_size_v10";
+const LS_SHOW_ARCHIVE = "tt_show_archive_v10";
+
+function loadProjects(){ try { return JSON.parse(localStorage.getItem(LS_PROJECTS)) ?? []; } catch { return []; } }
+function saveProjects(x){ localStorage.setItem(LS_PROJECTS, JSON.stringify(x)); }
+function loadEntries(){ try { return JSON.parse(localStorage.getItem(LS_ENTRIES)) ?? {}; } catch { return {}; } }
+function saveEntries(x){ localStorage.setItem(LS_ENTRIES, JSON.stringify(x)); }
+
+let projects = loadProjects();
+let entries = loadEntries();
+
+let showArchived = (localStorage.getItem(LS_SHOW_ARCHIVE) === "1");
+
+/* Utils */
+function pad2(n){ return String(n).padStart(2,"0"); }
+function toISODate(d){
+  const x = new Date(d); x.setHours(0,0,0,0);
+  return `${x.getFullYear()}-${pad2(x.getMonth()+1)}-${pad2(x.getDate())}`;
+}
+function fromISODate(s){
+  const [y,m,d] = s.split("-").map(Number);
+  const dt = new Date(y, m-1, d); dt.setHours(0,0,0,0);
+  return dt;
+}
+function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+function daysBetween(a, b){
+  const ms = 24*60*60*1000;
+  const ax = new Date(a); ax.setHours(0,0,0,0);
+  const bx = new Date(b); bx.setHours(0,0,0,0);
+  return Math.round((bx-ax)/ms);
+}
+function fmtDayHeader(d){
+  const opts = { weekday:"short", day:"2-digit", month:"2-digit", year:"numeric" };
+  return d.toLocaleDateString("ru-RU", opts).replace(",", "");
+}
+function entryKey(colDateISO, slot){ return `${colDateISO}|${slot}`; }
+
+function stableColorFromString(str){
+  const palette = ["#6aa6ff","#66ffa6","#ffb86a","#ff6ad5","#a66aff","#6afff0","#ffd36a","#ff6a6a"];
+  let h=0; for(let i=0;i<str.length;i++) h=(h*31+str.charCodeAt(i))>>>0;
+  return palette[h % palette.length];
+}
+
+/* slotIndex is "half-hours from 00:00", can be > 48 (next day) */
+function slotToLabel(slotIndex){
+  const mins = slotIndex * 30;
+  const dayPlus = Math.floor(mins / 1440);
+  const minsInDay = mins % 1440;
+  const h = Math.floor(minsInDay/60);
+  const m = minsInDay%60;
+  const base = `${pad2(h)}:${pad2(m)}`;
+  return dayPlus === 0 ? base : `${base} (+1)`;
+}
+
+/* x1.5 before 10:00 and from 19:00 */
+function slotMultiplier(slotIndex){
+  const mins = (slotIndex * 30) % 1440;   // time-of-day
+  const hour = mins / 60;
+  return (hour < 10 || hour >= 19) ? 1.5 : 1.0;
+}
+
+/* Ensure project shape */
+function normalizeProjects(){
+  let changed = false;
+  for(const p of projects){
+    if(typeof p.budget !== "number") { p.budget = Number(p.budget) || 0; changed = true; }
+    if(typeof p.comment !== "string") { p.comment = ""; changed = true; }
+    if(typeof p.paid !== "boolean") { p.paid = false; changed = true; }
+    if(typeof p.archived !== "boolean") { p.archived = false; changed = true; }
+    if(typeof p.createdAt !== "number" || !Number.isFinite(p.createdAt)) {
+      p.createdAt = Date.now(); // fallback for old records
+      changed = true;
+    }
+  }
+  if(changed) saveProjects(projects);
+}
+
+/* Entries migration: string -> [string], keep only up to 2 */
+function normalizeEntries(){
+  let changed = false;
+  for(const k in entries){
+    const v = entries[k];
+    if(typeof v === "string"){
+      entries[k] = v ? [v] : [];
+      changed = true;
+    } else if(Array.isArray(v)){
+      const clean = v.filter(x => typeof x === "string" && x.trim() !== "").slice(0,2);
+      if(clean.length !== v.length || (clean[0] !== v[0]) || (clean[1] !== v[1])){
+        entries[k] = clean;
+        changed = true;
+      }
+    } else if(v == null){
+      entries[k] = [];
+      changed = true;
+    } else {
+      entries[k] = [];
+      changed = true;
+    }
+    if(Array.isArray(entries[k]) && entries[k].length === 0){
+      delete entries[k];
+      changed = true;
+    }
+  }
+  if(changed) saveEntries(entries);
+}
+
+normalizeProjects();
+normalizeEntries();
+
+function projectById(id){ return projects.find(p=>p.id===id) || null; }
+function isProjectSelectable(p){
+  // archived=true => NOT selectable
+  return !!p && p.archived !== true;
+}
+
+/* Tabs */
+document.querySelectorAll(".tabbtn").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".tabbtn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+  });
+});
+
+/* Virtual date window (infinite both directions) */
+const ANCHOR_DATE = fromISODate("2026-01-01");
+const DAY_COL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--daycol"));
+const SLOT_START = 18;      // 09:00
+const SLOT_END_EXCL = 54;   // 03:00(+1) exclusive
+
+let windowSize = Number(localStorage.getItem(LS_WINDOW_SIZE)) || 41;
+if(!Number.isFinite(windowSize) || windowSize < 21) windowSize = 41;
+
+function todayIndex(){ return daysBetween(ANCHOR_DATE, new Date()); }
+
+let windowStartIndex = (() => {
+  const saved = localStorage.getItem(LS_WINDOW_START);
+  if(saved !== null){
+    const x = Number(saved);
+    if(Number.isFinite(x)) return x;
+  }
+  return todayIndex() - Math.floor(windowSize/2);
+})();
+
+let columns = []; // {index,date,iso,isToday}
+
+const leftBody    = document.getElementById("leftBody");
+const hScroll     = document.getElementById("hScroll");
+const rightHeader = document.getElementById("rightHeader");
+const rightBody   = document.getElementById("rightBody");
+
+function rebuildColumns(){
+  columns = [];
+  const tIdx = todayIndex();
+  for(let i=0;i<windowSize;i++){
+    const idx = windowStartIndex + i;
+    const d = addDays(ANCHOR_DATE, idx);
+    columns.push({ index: idx, date: d, iso: toISODate(d), isToday: idx===tIdx });
+  }
+  localStorage.setItem(LS_WINDOW_START, String(windowStartIndex));
+  localStorage.setItem(LS_WINDOW_SIZE, String(windowSize));
+}
+
+function setTemplatesAndWidths(){
+  rightHeader.style.gridTemplateColumns = `repeat(${columns.length}, var(--daycol))`;
+  const w = Math.round(columns.length * DAY_COL);
+  rightHeader.style.width = w + "px";
+  rightBody.style.width   = w + "px";
+}
+
+function renderLeftTimes(){
+  leftBody.innerHTML = "";
+  for(let s=SLOT_START; s<SLOT_END_EXCL; s++){
+    const t = document.createElement("div");
+    t.className = "tcell mono";
+    t.textContent = slotToLabel(s);
+    leftBody.appendChild(t);
+  }
+}
+
+function renderRightHeader(){
+  rightHeader.innerHTML = "";
+  for(const col of columns){
+    const el = document.createElement("div");
+    el.className = "hcell" + (col.isToday ? " today" : "");
+    el.textContent = fmtDayHeader(col.date);
+    rightHeader.appendChild(el);
+  }
+}
+
+function renderCellPills(taskIds){
+  const wrap = document.createElement("div");
+  wrap.className = "cellPills";
+  const ids = (Array.isArray(taskIds) ? taskIds : []).slice(0,2);
+
+  for(const pid of ids){
+    const p = projectById(pid);
+    const name = p ? p.name : "— (проект удалён)";
+    const color = stableColorFromString(pid);
+
+    const pill = document.createElement("div");
+    pill.className = "pill small";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.background = color;
+    const pn = document.createElement("span");
+    pn.className = "pname";
+    pn.textContent = name;
+    pill.appendChild(dot);
+    pill.appendChild(pn);
+    wrap.appendChild(pill);
+  }
+  return wrap;
+}
+
+function getTasksForCell(dateISO, slot){
+  const v = entries[entryKey(dateISO, slot)];
+  if(Array.isArray(v)) return v.slice(0,2);
+  if(typeof v === "string" && v) return [v];
+  return [];
+}
+
+function setTasksForCell(dateISO, slot, taskIds){
+  const key = entryKey(dateISO, slot);
+  const clean = (Array.isArray(taskIds) ? taskIds : [])
+    .filter(x => typeof x === "string" && x.trim() !== "")
+    .slice(0,2);
+
+  const uniq = [];
+  for(const x of clean){ if(!uniq.includes(x)) uniq.push(x); }
+  const final = uniq.slice(0,2);
+
+  if(final.length === 0) delete entries[key];
+  else entries[key] = final;
+
+  saveEntries(entries);
+}
+
+function renderRightBody(){
+  rightBody.innerHTML = "";
+
+  for(let s=SLOT_START; s<SLOT_END_EXCL; s++){
+    const row = document.createElement("div");
+    row.className = "gRow";
+    row.style.gridTemplateColumns = rightHeader.style.gridTemplateColumns;
+
+    for(const col of columns){
+      const tasks = getTasksForCell(col.iso, s);
+
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      cell.dataset.date = col.iso;
+      cell.dataset.slot = String(s);
+
+      if(tasks.length > 0){
+        cell.appendChild(renderCellPills(tasks));
+      }
+
+      cell.addEventListener("click", ()=> openCellModal(col.iso, s, tasks));
+      row.appendChild(cell);
+    }
+    rightBody.appendChild(row);
+  }
+}
+
+/* Vertical sync */
+rightBody.addEventListener("scroll", ()=>{ leftBody.scrollTop = rightBody.scrollTop; });
+
+/* Trackpad horizontal sync */
+function forwardHorizontalWheel(e){
+  if (Math.abs(e.deltaX) > 0) {
+    hScroll.scrollLeft += e.deltaX;
+    if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) e.preventDefault();
+  }
+}
+rightBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
+leftBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
+
+/* Infinite scroll left+right */
+let scrollTicking = false;
+hScroll.addEventListener("scroll", ()=>{
+  if(scrollTicking) return;
+  scrollTicking = true;
+  requestAnimationFrame(()=>{
+    scrollTicking = false;
+
+    const nearRight = (hScroll.scrollLeft + hScroll.clientWidth) > (hScroll.scrollWidth - DAY_COL*4);
+    const nearLeft  = hScroll.scrollLeft < DAY_COL*2;
+
+    if(nearRight){
+      const shift = 10;
+      windowStartIndex += shift;
+      const prev = hScroll.scrollLeft;
+      renderAll();
+      hScroll.scrollLeft = Math.max(0, prev - shift*DAY_COL);
+    } else if(nearLeft){
+      const shift = 10;
+      windowStartIndex -= shift;
+      const prev = hScroll.scrollLeft;
+      renderAll();
+      hScroll.scrollLeft = prev + shift*DAY_COL;
+    }
+  });
+});
+
+function centerToday(){
+  const tIdx = todayIndex();
+  const left = windowStartIndex;
+  const right = windowStartIndex + windowSize - 1;
+
+  if(tIdx < left || tIdx > right){
+    windowStartIndex = tIdx - Math.floor(windowSize/2);
+    renderAll();
+  }
+
+  const todayPos = tIdx - windowStartIndex;
+  const targetCenter = todayPos * DAY_COL + DAY_COL/2;
+  const desired = Math.max(0, targetCenter - (hScroll.clientWidth/2));
+  hScroll.scrollLeft = desired;
+}
+document.getElementById("goToday").addEventListener("click", centerToday);
+
+/* Modal */
+const modalBack = document.getElementById("modalBack");
+const modalClose = document.getElementById("modalClose");
+const modalMeta = document.getElementById("modalMeta");
+const modalHint = document.getElementById("modalHint");
+const task1Select = document.getElementById("task1Select");
+const task2Select = document.getElementById("task2Select");
+const btnSaveCell = document.getElementById("saveCell");
+const btnClearCell = document.getElementById("clearCell");
+let modalState = { dateISO:null, slot:null };
+
+function fillSelectWithProjects(sel, selectable, includeNone){
+  sel.innerHTML = "";
+  if(includeNone){
+    const optNone = document.createElement("option");
+    optNone.value = "";
+    optNone.textContent = "— нет —";
+    sel.appendChild(optNone);
+  }
+  for(const p of selectable){
+    const opt = document.createElement("option");
+    opt.value = p.id;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  }
+}
+
+function openCellModal(dateISO, slot, currentTasks){
+  modalState = { dateISO, slot };
+  const mult = slotMultiplier(slot);
+  const tasks = (Array.isArray(currentTasks) ? currentTasks : []).slice(0,2);
+  const isTwo = tasks.length === 2;
+
+  modalMeta.textContent =
+    `${dateISO} • ${slotToLabel(slot)} – ${slotToLabel(slot+1)} (30 минут) • x${mult} • ` +
+    (isTwo ? `2 задачи по 0.25ч` : `1 задача 0.5ч`);
+
+  const selectable = projects.filter(isProjectSelectable);
+
+  if(selectable.length === 0){
+    fillSelectWithProjects(task1Select, [], false);
+    fillSelectWithProjects(task2Select, [], true);
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Нет доступных проектов (снимите 'Архив')";
+    task1Select.appendChild(opt);
+    task1Select.disabled = true;
+    task2Select.disabled = true;
+    btnSaveCell.disabled = true;
+    modalHint.textContent = "Открой вкладку 2 и выключи галочку “Архив” у проекта, который хочешь выбирать.";
+  } else {
+    task1Select.disabled = false;
+    task2Select.disabled = false;
+    btnSaveCell.disabled = false;
+
+    fillSelectWithProjects(task1Select, selectable, false);
+    fillSelectWithProjects(task2Select, selectable, true);
+
+    const t1 = tasks[0] || selectable[0].id;
+    const t2 = tasks[1] || "";
+
+    if(selectable.some(p=>p.id===t1)) task1Select.value = t1;
+    else task1Select.selectedIndex = 0;
+
+    if(t2 && selectable.some(p=>p.id===t2)) task2Select.value = t2;
+    else task2Select.value = "";
+
+    modalHint.textContent =
+      "Можно выбрать до 2 задач в одной ячейке. Если выбраны 2 — каждая считается как 0.25 часа (с учётом коэффициента времени).";
+  }
+
+  modalBack.classList.add("open");
+  setTimeout(()=> task1Select.focus(), 0);
+}
+function closeModal(){ modalBack.classList.remove("open"); }
+modalClose.addEventListener("click", closeModal);
+modalBack.addEventListener("click", (e)=>{ if(e.target === modalBack) closeModal(); });
+document.addEventListener("keydown", (e)=>{ if(e.key === "Escape" && modalBack.classList.contains("open")) closeModal(); });
+
+btnSaveCell.addEventListener("click", ()=>{
+  const selectable = projects.filter(isProjectSelectable);
+  if(selectable.length === 0) return;
+
+  const t1 = task1Select.value;
+  const t2 = task2Select.value;
+
+  const next = [];
+  if(t1) next.push(t1);
+  if(t2) next.push(t2);
+
+  setTasksForCell(modalState.dateISO, modalState.slot, next);
+
+  closeModal();
+  renderAll();
+});
+
+btnClearCell.addEventListener("click", ()=>{
+  setTasksForCell(modalState.dateISO, modalState.slot, []);
+  closeModal();
+  renderAll();
+});
+
+/* Projects */
+const projName = document.getElementById("projName");
+const projBudget = document.getElementById("projBudget");
+const addProjectBtn = document.getElementById("addProject");
+const projectsTbody = document.getElementById("projectsTbody");
+const toggleArchiveBtn = document.getElementById("toggleArchive");
+
+function sortProjectsNewestFirst(arr){
+  return [...arr].sort((a,b)=> (b.createdAt||0) - (a.createdAt||0));
+}
+
+function setArchiveButtonLabel(){
+  toggleArchiveBtn.textContent = showArchived ? "Скрыть архивные" : "Показать архивные";
+}
+
+toggleArchiveBtn.addEventListener("click", ()=>{
+  showArchived = !showArchived;
+  localStorage.setItem(LS_SHOW_ARCHIVE, showArchived ? "1" : "0");
+  setArchiveButtonLabel();
+  renderProjects(); // только таблицу проектов
+});
+
+setArchiveButtonLabel();
+
+addProjectBtn.addEventListener("click", ()=>{
+  const name = (projName.value || "").trim();
+  const budget = Number(projBudget.value);
+  if(!name){ alert("Введите название проекта."); return; }
+  if(!Number.isFinite(budget) || budget < 0){ alert("Введите бюджет числом (0 или больше)."); return; }
+
+  const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "_" + Math.random().toString(16).slice(2);
+  projects.push({ id, name, budget, comment:"", paid:false, archived:false, createdAt: Date.now() });
+  saveProjects(projects);
+
+  projName.value = "";
+  projBudget.value = "";
+  renderAll();
+});
+
+document.getElementById("recalc").addEventListener("click", ()=> renderAll());
+
+document.getElementById("resetAll").addEventListener("click", ()=>{
+  const ok = confirm("Точно сбросить всё? Удалятся проекты и заполнение таблицы.");
+  if(!ok) return;
+  projects = [];
+  entries = {};
+  saveProjects(projects);
+  saveEntries(entries);
+  renderAll();
+});
+
+function calcHoursByProject(){
+  const acc = new Map();
+  for(const k in entries){
+    const taskIds = entries[k];
+    if(!Array.isArray(taskIds) || taskIds.length === 0) continue;
+
+    const slot = Number(k.split("|")[1]);
+    const mult = slotMultiplier(slot);
+
+    const n = Math.min(2, taskIds.length);
+    const realPer = (n === 2) ? 0.25 : 0.5;
+    const weightedPer = realPer * mult;
+
+    for(let i=0;i<n;i++){
+      const pid = taskIds[i];
+      if(!pid) continue;
+      const cur = acc.get(pid) || { real:0, weighted:0 };
+      cur.real += realPer;
+      cur.weighted += weightedPer;
+      acc.set(pid, cur);
+    }
+  }
+  return acc;
+}
+
+function renderProjects(){
+  normalizeProjects();
+  const map = calcHoursByProject();
+  projectsTbody.innerHTML = "";
+
+  const sorted = sortProjectsNewestFirst(projects);
+
+  const visibleRows = sorted.filter(p => showArchived ? true : p.archived !== true);
+
+  if(visibleRows.length === 0){
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 9;
+    td.className = "muted";
+    td.textContent = showArchived
+      ? "Проектов нет."
+      : "Нет неархивных проектов. Нажми “Показать архивные”, чтобы увидеть архив.";
+    tr.appendChild(td);
+    projectsTbody.appendChild(tr);
+    return;
+  }
+
+  for(const p of visibleRows){
+    const hours = map.get(p.id) || { real:0, weighted:0 };
+    const rate = hours.weighted > 0 ? (p.budget / hours.weighted) : null;
+
+    const tr = document.createElement("tr");
+    if(p.paid) tr.classList.add("paid");
+
+    // Paid checkbox
+    const tdPaid = document.createElement("td");
+    const paidWrap = document.createElement("label");
+    paidWrap.className = "cb";
+    const paidCb = document.createElement("input");
+    paidCb.type = "checkbox";
+    paidCb.checked = !!p.paid;
+    paidWrap.appendChild(paidCb);
+    const paidLbl = document.createElement("span");
+    paidLbl.className = p.paid ? "paidMark" : "";
+    paidLbl.textContent = "Оплачен";
+    paidWrap.appendChild(paidLbl);
+    tdPaid.appendChild(paidWrap);
+
+    // Name
+    const tdName = document.createElement("td");
+    const pill = document.createElement("span");
+    pill.className = "pill";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.background = stableColorFromString(p.id);
+    const text = document.createElement("span");
+    text.className = "pname";
+    text.textContent = p.name;
+    pill.appendChild(dot); pill.appendChild(text);
+    tdName.appendChild(pill);
+
+    // Hours real
+    const tdReal = document.createElement("td");
+    tdReal.className = "mono";
+    tdReal.textContent = hours.real.toFixed(2);
+
+    // Hours weighted
+    const tdW = document.createElement("td");
+    tdW.className = "mono";
+    tdW.textContent = hours.weighted.toFixed(2);
+
+    // Budget
+    const tdBudget = document.createElement("td");
+    tdBudget.className = "mono";
+    tdBudget.textContent = Number(p.budget).toFixed(2);
+
+    // Rate
+    const tdRate = document.createElement("td");
+    tdRate.className = "mono";
+    tdRate.textContent = rate === null ? "—" : rate.toFixed(2);
+
+    // Comment
+    const tdComment = document.createElement("td");
+    const ta = document.createElement("textarea");
+    ta.className = "textarea";
+    ta.placeholder = "Комментарий...";
+    ta.value = p.comment || "";
+    ta.addEventListener("input", ()=>{
+      p.comment = ta.value;
+      saveProjects(projects);
+    });
+    tdComment.appendChild(ta);
+
+    // Archive checkbox
+    const tdArch = document.createElement("td");
+    const archWrap = document.createElement("label");
+    archWrap.className = "cb";
+    const archCb = document.createElement("input");
+    archCb.type = "checkbox";
+    archCb.checked = !!p.archived;
+    archWrap.appendChild(archCb);
+    const archLbl = document.createElement("span");
+    archLbl.textContent = "Архив";
+    archWrap.appendChild(archLbl);
+    tdArch.appendChild(archWrap);
+
+    paidCb.addEventListener("change", ()=>{
+      p.paid = paidCb.checked;
+      paidLbl.className = p.paid ? "paidMark" : "";
+      if(p.paid){
+        p.archived = true;
+        archCb.checked = true;
+      }
+      saveProjects(projects);
+      renderAll();
+    });
+
+    archCb.addEventListener("change", ()=>{
+      p.archived = archCb.checked;
+      saveProjects(projects);
+      // если архив скрыт — сразу убрать строку
+      renderProjects();
+    });
+
+    // Actions
+    const tdActions = document.createElement("td");
+    const editBtn = document.createElement("button");
+    editBtn.className = "btn";
+    editBtn.textContent = "Бюджет";
+    editBtn.addEventListener("click", ()=>{
+      const next = prompt(`Новый бюджет для "${p.name}" (число):`, String(p.budget));
+      if(next === null) return;
+      const b = Number(next);
+      if(!Number.isFinite(b) || b < 0){ alert("Бюджет должен быть числом (0 или больше)."); return; }
+      p.budget = b;
+      saveProjects(projects);
+      renderAll();
+    });
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn danger";
+    delBtn.textContent = "Удалить";
+    delBtn.addEventListener("click", ()=>{
+      const ok = confirm(`Удалить проект "${p.name}"?\nЯчейки с этим проектом будут очищены.`);
+      if(!ok) return;
+
+      projects = projects.filter(x => x.id !== p.id);
+      saveProjects(projects);
+
+      for(const k in entries){
+        const arr = entries[k];
+        if(Array.isArray(arr) && arr.includes(p.id)){
+          const rest = arr.filter(x=>x!==p.id);
+          if(rest.length === 0) delete entries[k];
+          else entries[k] = rest.slice(0,2);
+        }
+      }
+      saveEntries(entries);
+      renderAll();
+    });
+
+    tdActions.appendChild(editBtn);
+    tdActions.appendChild(document.createTextNode(" "));
+    tdActions.appendChild(delBtn);
+
+    tr.appendChild(tdPaid);
+    tr.appendChild(tdName);
+    tr.appendChild(tdReal);
+    tr.appendChild(tdW);
+    tr.appendChild(tdBudget);
+    tr.appendChild(tdRate);
+    tr.appendChild(tdComment);
+    tr.appendChild(tdArch);
+    tr.appendChild(tdActions);
+
+    projectsTbody.appendChild(tr);
+  }
+}
+
+/* Render all */
+function renderAll(){
+  const savedV = rightBody.scrollTop;
+  const savedH = hScroll.scrollLeft;
+
+  rebuildColumns();
+  setTemplatesAndWidths();
+  renderLeftTimes();
+  renderRightHeader();
+  renderRightBody();
+  renderProjects();
+
+  rightBody.scrollTop = savedV;
+  leftBody.scrollTop = savedV;
+  hScroll.scrollLeft = savedH;
+}
+
+/* Init */
+renderAll();
+requestAnimationFrame(()=> centerToday());
+</script>
+</body>
+</html>
