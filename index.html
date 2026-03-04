@@ -200,11 +200,18 @@
       overflow:hidden;
       text-overflow: ellipsis;
       min-width: 0;
+      user-select: none;
     }
     .hcell.today{
       outline: 2px solid rgba(106,166,255,0.45);
       outline-offset: -2px;
       background: rgba(106,166,255,0.10);
+    }
+    /* Пользовательский выходной (пометка в заголовке) */
+    .hcell.userOff{
+      outline: 2px solid rgba(255,255,255,0.10);
+      outline-offset: -2px;
+      background: rgba(255,255,255,0.03);
     }
 
     .rightBody{
@@ -234,16 +241,15 @@
       line-height: 1;
       overflow: hidden;
     }
-    /* Повышенная ставка (x1.5): подсветка */
-/* Обычная ставка (x1) — слегка темнее */
-.cell.normal{
-  background: rgba(0,0,0,0.22);
-}
-
-.cell.normal:hover{
-  background: rgba(0,0,0,0.28);
-}
     .cell:hover{background: rgba(255,255,255,0.05)}
+
+    /* Обычная ставка (x1) — слегка темнее */
+    .cell.normal{
+      background: rgba(0,0,0,0.22);
+    }
+    .cell.normal:hover{
+      background: rgba(0,0,0,0.28);
+    }
 
     .cellPills{
       display:flex;
@@ -386,7 +392,9 @@
   <header>
     <h1>Time Tracker</h1>
     <div class="sub">
-       + e-mail login. Данные проектов и календаря сохраняются в базе и не пропадают при обновлении index.html.
+      Supabase + e-mail login. <br>
+      Повышенная ставка x1.5: (1) суббота/воскресенье целиком, (2) пользовательские выходные (клик по дате), (3) будни до 10:00 и с 19:00.
+      <br>В календаре затемнены только ячейки с обычной ставкой (x1).
     </div>
   </header>
 
@@ -414,7 +422,7 @@
           </div>
         </div>
         <div class="hint">
-          Если письмо не приходит — проверь “Spam/Промоакции”. После клика по ссылке вернёшься на сайт уже авторизованным.
+          После клика по ссылке вернёшься на сайт уже авторизованным. Если письмо не приходит — проверь “Spam/Промоакции”.
         </div>
       </div>
 
@@ -422,7 +430,10 @@
         <div class="row">
           <div class="controls">
             <button class="btn" id="goToday">Показать сегодня по центру</button>
-            <span class="small muted">Горизонтально прокручивай — даты подгружаются слева и справа.</span>
+            <span class="small muted">
+              Горизонтально прокручивай — даты подгружаются слева и справа. <br>
+              <b>Клик по дате</b> в заголовке столбца: отметить/снять пользовательский выходной (x1.5 на весь день).
+            </span>
           </div>
           <div class="controls">
             <span class="small muted"><span class="kbd">Esc</span> — закрыть окно выбора.</span>
@@ -484,8 +495,7 @@
         </div>
 
         <div class="hint">
-          Проекты сортируются по времени добавления (новые сверху).
-          Архивные по умолчанию скрыты.
+          Проекты сортируются по времени добавления (новые сверху). Архивные по умолчанию скрыты.
         </div>
       </div>
     </div>
@@ -543,8 +553,11 @@ let entries = {};  // key "date|slot" -> [pid1,pid2]
 
 let showArchived = false;
 
-// to avoid refetching same dates
+// cache: which dates we already fetched entries for (to reduce calls)
 const loadedDates = new Set();
+
+// custom premium days (user-defined weekends): 'YYYY-MM-DD'
+const premiumDates = new Set();
 
 /** =======================
  *  UI refs
@@ -595,19 +608,26 @@ function slotToLabel(slotIndex){
   const base = `${pad2(h)}:${pad2(m)}`;
   return dayPlus === 0 ? base : `${base} (+1)`;
 }
+
+/**
+ * Коэффициент x1.5 если:
+ * - пользователь отметил день как выходной (premiumDates)
+ * - суббота/воскресенье (весь день)
+ * - будни: до 10:00 и с 19:00
+ */
 function slotMultiplier(dateISO, slotIndex){
-  // Выходные: всегда x1.5
-  // dateISO формата YYYY-MM-DD
+  if(premiumDates.has(dateISO)) return 1.5;
+
   const d = fromISODate(dateISO);
   const day = d.getDay(); // 0=вс, 6=сб
   const isWeekend = (day === 0 || day === 6);
   if(isWeekend) return 1.5;
 
-  // Будни: как раньше — до 10:00 и с 19:00
   const mins = (slotIndex * 30) % 1440;
   const hour = mins / 60;
   return (hour < 10 || hour >= 19) ? 1.5 : 1.0;
 }
+
 function projectById(id){ return projects.find(p=>p.id===id) || null; }
 function isProjectSelectable(p){ return !!p && p.archived !== true; }
 
@@ -632,16 +652,15 @@ function setAuthed(s){
     authStatus.textContent = `Вошёл: ${s.user.email}`;
     loginBox.classList.remove("open");
     btnLogout.style.display = "";
-    // load data
     bootAuthed().catch(console.error);
   } else {
     authStatus.textContent = "Не авторизован";
     loginBox.classList.add("open");
     btnLogout.style.display = "none";
-    // clear state
     projects = [];
     entries = {};
     loadedDates.clear();
+    premiumDates.clear();
     renderAll(false);
   }
 }
@@ -653,7 +672,6 @@ btnSendLink.addEventListener("click", async ()=>{
   btnSendLink.disabled = true;
   loginHint.textContent = "Отправляю ссылку…";
 
-  // Redirect back to this page (GitHub Pages path preserved)
   const redirectTo = window.location.origin + window.location.pathname;
 
   const { error } = await sb.auth.signInWithOtp({
@@ -664,9 +682,9 @@ btnSendLink.addEventListener("click", async ()=>{
   btnSendLink.disabled = false;
 
   if(error){
-    console.error(error);
+    console.error("OTP error:", error);
     loginHint.textContent = "Ошибка отправки. Проверь email и настройки Supabase.";
-    alert(error.message);
+    alert("Ошибка отправки: " + (error?.message || "Unknown error"));
   } else {
     loginHint.textContent = "Ссылка отправлена. Открой письмо и нажми на ссылку.";
   }
@@ -677,7 +695,6 @@ btnLogout.addEventListener("click", async ()=>{
   setAuthed(null);
 });
 
-// listen auth changes (after magic link)
 sb.auth.onAuthStateChange((_event, s)=>{
   setAuthed(s);
 });
@@ -707,7 +724,6 @@ async function fetchEntriesForDates(dateList){
   const dates = dateList.filter(d => !loadedDates.has(d));
   if(dates.length === 0) return;
 
-  // mark as "loading" immediately to prevent duplicate calls
   dates.forEach(d => loadedDates.add(d));
 
   const { data, error } = await sb
@@ -716,23 +732,52 @@ async function fetchEntriesForDates(dateList){
     .in("date", dates);
 
   if(error){
-    // if error, allow retry
     dates.forEach(d => loadedDates.delete(d));
     throw error;
   }
 
-  // merge into entries map
   for(const row of (data || [])){
     const k = entryKey(row.date, row.slot);
     if(!entries[k]) entries[k] = [];
-    // task_index: 1 or 2
     const idx = (row.task_index === 2) ? 1 : 0;
     entries[k][idx] = row.project_id;
   }
 }
 
+async function fetchPremiumDatesForDates(dateList){
+  const dates = dateList.filter(Boolean);
+  if(!dates.length) return;
+
+  const { data, error } = await sb
+    .from("premium_days")
+    .select("date")
+    .in("date", dates);
+
+  if(error) throw error;
+
+  // обновляем set только для этих дат: сначала удалим их, потом добавим найденные
+  for(const d of dates) premiumDates.delete(d);
+  for(const row of (data || [])) premiumDates.add(row.date);
+}
+
+async function setPremiumDay(dateISO, isPremium){
+  if(!userId) return;
+
+  if(isPremium){
+    const { error } = await sb.from("premium_days").insert({
+      user_id: userId,
+      date: dateISO
+    });
+    if(error) throw error;
+    premiumDates.add(dateISO);
+  } else {
+    const { error } = await sb.from("premium_days").delete().eq("date", dateISO);
+    if(error) throw error;
+    premiumDates.delete(dateISO);
+  }
+}
+
 async function saveProjectToDb(p){
-  // upsert by id
   const payload = {
     id: p.id,
     user_id: userId,
@@ -747,11 +792,9 @@ async function saveProjectToDb(p){
 }
 
 async function deleteProjectFromDb(projectId){
-  // delete project
   const { error: e1 } = await sb.from("projects").delete().eq("id", projectId);
   if(e1) throw e1;
 
-  // cleanup entries (optional; FK cascade might handle if you have FK project_id -> projects.id)
   const { error: e2 } = await sb.from("calendar_entries").delete().eq("project_id", projectId);
   if(e2) console.warn(e2);
 }
@@ -762,7 +805,6 @@ async function saveCellToDb(dateISO, slot, taskIds){
     .filter((v,i,a)=>a.indexOf(v)===i)
     .slice(0,2);
 
-  // 1) delete existing rows for this cell
   const { error: delErr } = await sb
     .from("calendar_entries")
     .delete()
@@ -771,7 +813,6 @@ async function saveCellToDb(dateISO, slot, taskIds){
 
   if(delErr) throw delErr;
 
-  // 2) insert up to 2
   if(clean.length > 0){
     const rows = clean.map((pid, i) => ({
       user_id: userId,
@@ -784,7 +825,6 @@ async function saveCellToDb(dateISO, slot, taskIds){
     if(insErr) throw insErr;
   }
 
-  // update local cache
   const k = entryKey(dateISO, slot);
   if(clean.length === 0) delete entries[k];
   else entries[k] = clean;
@@ -794,13 +834,13 @@ async function saveCellToDb(dateISO, slot, taskIds){
  *  App boot after login
  *  ======================= */
 async function bootAuthed(){
-  // Load projects first (selector depends on it)
   await fetchProjects();
-  // Load entries for current window
+
   rebuildColumns();
   await fetchEntriesForDates(columns.map(c=>c.iso));
+  await fetchPremiumDatesForDates(columns.map(c=>c.iso));
+
   renderAll(false);
-  // Center today
   requestAnimationFrame(()=> centerToday());
 }
 
@@ -865,10 +905,40 @@ function renderLeftTimes(){
 
 function renderRightHeader(){
   rightHeader.innerHTML = "";
+
   for(const col of columns){
     const el = document.createElement("div");
     el.className = "hcell" + (col.isToday ? " today" : "");
     el.textContent = fmtDayHeader(col.date);
+    el.dataset.date = col.iso;
+
+    if(premiumDates.has(col.iso)) el.classList.add("userOff");
+
+    el.style.cursor = "pointer";
+    el.title = "Клик: отметить/снять пользовательский выходной (x1.5 на весь день)";
+
+    el.addEventListener("click", async ()=>{
+      if(!userId){
+        alert("Сначала войди по e-mail, чтобы сохранять выходные в базе.");
+        return;
+      }
+      const cur = premiumDates.has(col.iso);
+      const ok = cur
+        ? confirm(`Убрать пользовательский выходной для ${col.iso}?`)
+        : confirm(`Отметить ${col.iso} как выходной (x1.5 на весь день)?`);
+      if(!ok) return;
+
+      try{
+        await setPremiumDay(col.iso, !cur);
+        // обновим только видимую полосу дат (на случай рассинхрона)
+        await fetchPremiumDatesForDates(columns.map(c=>c.iso));
+        renderAll(true);
+      } catch(e){
+        console.error(e);
+        alert("Не получилось сохранить выходной день. Проверь RLS и авторизацию.");
+      }
+    });
+
     rightHeader.appendChild(el);
   }
 }
@@ -915,9 +985,10 @@ function renderRightBody(){
     for(const col of columns){
       const tasks = getTasksForCell(col.iso, s);
 
-const cell = document.createElement("div");
-const mult = slotMultiplier(col.iso, s);
-cell.className = "cell" + (mult === 1.0 ? " normal" : "");
+      const mult = slotMultiplier(col.iso, s);
+
+      const cell = document.createElement("div");
+      cell.className = "cell" + (mult === 1.0 ? " normal" : "");
 
       if(tasks.length > 0){
         cell.appendChild(renderCellPills(tasks));
@@ -943,7 +1014,7 @@ function forwardHorizontalWheel(e){
 rightBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
 leftBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
 
-/* Infinite scroll left+right + fetch entries for new dates */
+/* Infinite scroll left+right + fetch entries + premium days for new dates */
 let scrollTicking = false;
 hScroll.addEventListener("scroll", ()=>{
   if(scrollTicking) return;
@@ -961,9 +1032,13 @@ hScroll.addEventListener("scroll", ()=>{
       windowStartIndex += nearRight ? shift : -shift;
       rebuildColumns();
 
-      // load entries for new window dates (only if authed)
       if(userId){
-        try { await fetchEntriesForDates(columns.map(c=>c.iso)); } catch(e){ console.error(e); }
+        try{
+          await fetchEntriesForDates(columns.map(c=>c.iso));
+          await fetchPremiumDatesForDates(columns.map(c=>c.iso));
+        } catch(e){
+          console.error(e);
+        }
       }
 
       renderAll(true);
@@ -983,8 +1058,12 @@ function centerToday(){
   if(tIdx < left || tIdx > right){
     windowStartIndex = tIdx - Math.floor(windowSize/2);
     rebuildColumns();
+
     if(userId){
-      fetchEntriesForDates(columns.map(c=>c.iso)).then(()=> renderAll(true)).catch(console.error);
+      Promise.all([
+        fetchEntriesForDates(columns.map(c=>c.iso)),
+        fetchPremiumDatesForDates(columns.map(c=>c.iso))
+      ]).then(()=> renderAll(true)).catch(console.error);
     } else {
       renderAll(true);
     }
@@ -1167,9 +1246,11 @@ function calcHoursByProject(){
     const taskIds = entries[k];
     if(!Array.isArray(taskIds) || taskIds.length === 0) continue;
 
-    const slot = Number(k.split("|")[1]);
-    const dateISO = k.split("|")[0];
-const mult = slotMultiplier(dateISO, slot);
+    const parts = k.split("|");
+    const dateISO = parts[0];
+    const slot = Number(parts[1]);
+
+    const mult = slotMultiplier(dateISO, slot);
 
     const n = Math.min(2, taskIds.length);
     const realPer = (n === 2) ? 0.25 : 0.5;
@@ -1344,13 +1425,13 @@ function renderProjects(){
         await deleteProjectFromDb(p.id);
         await fetchProjects();
 
-        // also clear local entries referencing this project (for UI correctness)
-        for(const k in entries){
-          const arr = entries[k];
+        // clear local cache entries for UI correctness
+        for(const kk in entries){
+          const arr = entries[kk];
           if(Array.isArray(arr) && arr.includes(p.id)){
             const rest = arr.filter(x=>x!==p.id);
-            if(rest.length === 0) delete entries[k];
-            else entries[k] = rest.slice(0,2);
+            if(rest.length === 0) delete entries[kk];
+            else entries[kk] = rest.slice(0,2);
           }
         }
         renderAll(true);
