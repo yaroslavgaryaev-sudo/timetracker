@@ -916,12 +916,47 @@ function renderProjects(){
     dot.style.background = stableColorFromString(p.id);
     dot.style.marginTop = "4px";
 
-    const nm = document.createElement("div");
-    nm.className = "pnameWrap";
-    nm.textContent = p.name;
+    const nameIn = document.createElement("input");
+    nameIn.className = "input";
+    nameIn.type = "text";
+    nameIn.value = p.name;
+    nameIn.style.width = "100%";
+
+    // Enter = сохранить (через blur -> change)
+    nameIn.addEventListener("keydown", (e)=>{
+      if(e.key === "Enter"){
+        e.preventDefault();
+        nameIn.blur();
+      }
+    });
+
+    nameIn.addEventListener("change", async ()=>{
+      const v = (nameIn.value || "").trim();
+      if(!v){
+        nameIn.value = p.name;
+        alert("Название проекта не может быть пустым.");
+        return;
+      }
+      if(v === p.name) return;
+
+      const prev = p.name;
+      p.name = v;
+
+      try{
+        await saveProjectToDb(p);
+        await fetchProjects();
+        refreshGroupDatalists();
+        renderAll(true);
+      } catch(e){
+        console.error(e);
+        alert("Ошибка сохранения названия проекта.");
+        p.name = prev;
+        nameIn.value = prev;
+      }
+    });
 
     wrap.appendChild(dot);
-    wrap.appendChild(nm);
+    wrap.appendChild(nameIn);
     tdName.appendChild(wrap);
 
     // Hours
