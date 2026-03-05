@@ -12,9 +12,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let session = null;
 let userId = null;
 
-let projects = []; // {id,name,group,budget,comment,paid,archived,createdAt}
+let projects = []; // {id,name,group,budget,color,comment,paid,archived,createdAt}
 let entries = {};  // key "date|slot" -> [pid1,pid2]
-let cellHalf = {}; // key "date|slot" -> true/false (если true и 1 задача, то 0.25ч)
 let showArchived = false;
 
 const loadedDates = new Set();
@@ -55,6 +54,21 @@ function stableColorFromString(str){
   let h=0; for(let i=0;i<str.length;i++) h=(h*31+str.charCodeAt(i))>>>0;
   return palette[h % palette.length];
 }
+
+// Цвета проектов (ограниченный список)
+const ALLOWED_PROJECT_COLORS = ["#FF0000", "#FF9300", "#FFFF00", "#00FF00", "#00AB49", "#FFFFFF", "#FF00FF", "#A800FF", "#3388EF", "#00FFFF", "#00C1C8", "#666666"];
+function normalizeHexColor(v){
+  if(!v) return null;
+  let s = String(v).trim().toUpperCase();
+  if(!s) return null;
+  if(!s.startsWith('#')) s = '#' + s;
+  if(!/^#[0-9A-F]{6}$/.test(s)) return null;
+  return s;
+}
+function randomProjectColor(){
+  return ALLOWED_PROJECT_COLORS[Math.floor(Math.random()*ALLOWED_PROJECT_COLORS.length)];
+}
+
 function slotToLabel(slotIndex){
   const mins = slotIndex * 30;
   const dayPlus = Math.floor(mins / 1440);
@@ -129,7 +143,6 @@ function setAuthed(s){
     btnLogout.style.display = "none";
     projects = [];
     entries = {};
-    cellHalf = {};
     loadedDates.clear();
     dayOverrides.clear();
     renderAll(false);
@@ -165,6 +178,7 @@ async function fetchProjects(){
     id: p.id,
     name: p.name,
     group: p.group_name ?? "",
+    color: normalizeHexColor(p.color_hex) || null,
     budget: Number(p.budget ?? 0),
     comment: p.comment ?? "",
     paid: !!p.paid,
@@ -178,7 +192,7 @@ async function fetchEntriesForDates(dateList){
   dates.forEach(d => loadedDates.add(d));
   const { data, error } = await sb
     .from("calendar_entries")
-    .select("date,slot,task_index,project_id,is_half")
+    .select("date,slot,task_index,project_id")
     .in("date", dates);
   if(error){
     dates.forEach(d => loadedDates.delete(d));
@@ -189,11 +203,6 @@ async function fetchEntriesForDates(dateList){
     if(!entries[k]) entries[k] = [];
     const idx = (row.task_index === 2) ? 1 : 0;
     entries[k][idx] = row.project_id;
-
-    // Флаг "пол-ячейки" храним один раз на ячейку (достаточно по task_index=1)
-    if(row.task_index === 1){
-      cellHalf[k] = !!row.is_half;
-    }
   }
 }
 async function fetchDayOverridesForDates(dateList){
@@ -227,7 +236,8 @@ async function saveProjectToDb(p){
     budget: p.budget,
     comment: p.comment,
     paid: p.paid,
-    archived: p.archived
+    archived: p.archived,
+    color_hex: normalizeHexColor(p.color) || null
   };
   const { error } = await sb.from("projects").upsert(payload, { onConflict: "id" });
   if(error) throw error;
@@ -238,15 +248,11 @@ async function deleteProjectFromDb(projectId){
   const { error: e2 } = await sb.from("calendar_entries").delete().eq("project_id", projectId);
   if(e2) console.warn(e2);
 }
-async function saveCellToDb(dateISO, slot, taskIds, isHalf=false){
+async function saveCellToDb(dateISO, slot, taskIds){
   const clean = (Array.isArray(taskIds) ? taskIds : [])
     .filter(Boolean)
     .filter((v,i,a)=>a.indexOf(v)===i)
     .slice(0,2);
-
-  // Если "пол-ячейки" — разрешаем только 1 задачу
-  const half = !!isHalf;
-  if(half && clean.length > 1) clean.splice(1);
 
   const { error: delErr } = await sb
     .from("calendar_entries")
@@ -261,23 +267,15 @@ async function saveCellToDb(dateISO, slot, taskIds, isHalf=false){
       date: dateISO,
       slot: slot,
       task_index: i+1,
-      project_id: pid,
-      // half имеет смысл только для первой задачи
-      is_half: (i === 0 ? half : false)
+      project_id: pid
     }));
     const { error: insErr } = await sb.from("calendar_entries").insert(rows);
     if(insErr) throw insErr;
   }
 
   const k = entryKey(dateISO, slot);
-  if(clean.length === 0){
-    delete entries[k];
-    delete cellHalf[k];
-  } else {
-    entries[k] = clean;
-    // half сохраняем только когда 1 задача
-    cellHalf[k] = (half && clean.length === 1);
-  }
+  if(clean.length === 0) delete entries[k];
+  else entries[k] = clean;
 }
 
 /** Boot */
@@ -357,33 +355,23 @@ function renderRightHeader(){
     rightHeader.appendChild(el);
   }
 }
-function renderCellPills(taskIds, isHalf = false){
+function renderCellPills(taskIds){
   const wrap = document.createElement("div");
   wrap.className = "cellPills";
   const ids = (Array.isArray(taskIds) ? taskIds : []).slice(0,2);
 
-  for(let i=0;i<ids.length;i++){
-    const pid = ids[i];
+  for(const pid of ids){
     const p = projectById(pid);
     const name = p ? p.name : "— (проект удалён)";
-    const color = stableColorFromString(pid);
-
+    const color = (p && p.color) ? p.color : stableColorFromString(pid);
     const pill = document.createElement("div");
     pill.className = "pill small";
-
-    // если это "пол-ячейки" и задача одна — делаем плашку половинной ширины
-    if(isHalf && ids.length === 1){
-      pill.classList.add("half");
-    }
-
     const dot = document.createElement("span");
     dot.className = "dot";
     dot.style.background = color;
-
     const pn = document.createElement("span");
     pn.className = "pname";
     pn.textContent = name;
-
     pill.appendChild(dot);
     pill.appendChild(pn);
     wrap.appendChild(pill);
@@ -409,11 +397,7 @@ function renderRightBody(){
       const cell = document.createElement("div");
       cell.className = "cell" + (mult === 1.0 ? " normal" : " premium");
 
-      if(tasks.length > 0){
-        const key = entryKey(col.iso, s);
-        const isHalf = !!cellHalf[key] && tasks.length === 1;
-        cell.appendChild(renderCellPills(tasks, isHalf));
-      }
+      if(tasks.length > 0) cell.appendChild(renderCellPills(tasks));
       cell.addEventListener("click", ()=> openCellModal(col.iso, s, tasks));
       row.appendChild(cell);
     }
@@ -498,7 +482,6 @@ const modalMetaCell = document.getElementById("modalMetaCell");
 const modalHintCell = document.getElementById("modalHintCell");
 const task1Select = document.getElementById("task1Select");
 const task2Select = document.getElementById("task2Select");
-const halfCellCk  = document.getElementById("halfCellCk"); // новый чекбокс "пол-ячейки"
 const btnSaveCell = document.getElementById("saveCell");
 const btnClearCell = document.getElementById("clearCell");
 let modalCellState = { dateISO:null, slot:null };
@@ -529,42 +512,9 @@ function openCellModal(dateISO, slot, currentTasks){
   const tasks = (Array.isArray(currentTasks) ? currentTasks : []).slice(0,2);
   const isTwo = tasks.length === 2;
 
-  const key = entryKey(dateISO, slot);
-
-// если в ячейке 2 задачи — режим half выключаем принудительно
-let isHalf = !!cellHalf[key] && tasks.length === 1;
-if(tasks.length === 2) isHalf = false;
-
-if(halfCellCk){
-  halfCellCk.checked = isHalf;
-}
-
-function updateHalfUi(){
-  const on = !!(halfCellCk && halfCellCk.checked);
-
-  // если включили half — очищаем и блокируем вторую задачу
-  if(halfCellCk){
-    if(on){
-      task2Select.value = "";
-      task2Select.disabled = true;
-    } else {
-      task2Select.disabled = false;
-    }
-  }
-
-  // обновим строку подсказки в заголовке модалки
-  const label = (tasks.length === 2)
-    ? `2 задачи по 0.25ч`
-    : (on ? `1 задача 0.25ч (пол-ячейки)` : `1 задача 0.5ч`);
-
   modalMetaCell.textContent =
-    `${dateISO} • ${slotToLabel(slot)} – ${slotToLabel(slot+1)} • x${mult} • ` + label;
-}
-
-updateHalfUi();
-if(halfCellCk){
-  halfCellCk.onchange = updateHalfUi;
-}
+    `${dateISO} • ${slotToLabel(slot)} – ${slotToLabel(slot+1)} • x${mult} • ` +
+    (isTwo ? `2 задачи по 0.25ч` : `1 задача 0.5ч`);
 
   const selectable = projects.filter(isProjectSelectable);
 
@@ -577,13 +527,11 @@ if(halfCellCk){
     task1Select.appendChild(opt);
     task1Select.disabled = true;
     task2Select.disabled = true;
-    if(halfCellCk){ halfCellCk.disabled = true; halfCellCk.checked = false; }
     btnSaveCell.disabled = true;
     modalHintCell.textContent = "Открой “Проекты” и выключи “Архив” у проекта.";
   } else {
     task1Select.disabled = false;
     task2Select.disabled = false;
-    if(halfCellCk){ halfCellCk.disabled = false; }
     btnSaveCell.disabled = false;
 
     fillSelectWithProjects(task1Select, selectable, false);
@@ -599,16 +547,6 @@ if(halfCellCk){
     else task2Select.value = "";
 
     modalHintCell.textContent = "Можно выбрать до 2 задач в одной ячейке.";
-
-    // Если выбрали вторую задачу — half-режим выключаем
-    if(halfCellCk){
-      task2Select.onchange = ()=>{
-        if(task2Select.value){
-          halfCellCk.checked = false;
-          updateHalfUi();
-        }
-      };
-    }
   }
 
   modalBackCell.classList.add("open");
@@ -624,15 +562,13 @@ btnSaveCell.addEventListener("click", async ()=>{
 
   const t1 = task1Select.value;
   const t2 = task2Select.value;
-  const isHalf = !!(halfCellCk && halfCellCk.checked);
 
   const next = [];
   if(t1) next.push(t1);
-  // вторую задачу разрешаем только если НЕ half
-  if(!isHalf && t2) next.push(t2);
+  if(t2) next.push(t2);
 
   try{
-    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, next, isHalf);
+    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, next);
     closeCellModal();
     renderAll(true);
   } catch(e){
@@ -642,7 +578,7 @@ btnSaveCell.addEventListener("click", async ()=>{
 });
 btnClearCell.addEventListener("click", async ()=>{
   try{
-    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, [], false);
+    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, []);
     closeCellModal();
     renderAll(true);
   } catch(e){
@@ -805,7 +741,7 @@ addProjectBtn.addEventListener("click", async ()=>{
 
   const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + "_" + Math.random().toString(16).slice(2);
 
-  const p = { id, name, group, budget, comment:"", paid:false, archived:false, createdAt: Date.now() };
+  const p = { id, name, group, budget, color: randomProjectColor(), comment:"", paid:false, archived:false, createdAt: Date.now() };
 
   try{
     await saveProjectToDb(p);
@@ -822,6 +758,77 @@ addProjectBtn.addEventListener("click", async ()=>{
 });
 document.getElementById("recalc").addEventListener("click", ()=> renderAll(true));
 
+
+// ===== Палитра выбора цвета проекта =====
+let colorPickerEl = null;
+function closeColorPicker(){
+  if(colorPickerEl){
+    colorPickerEl.remove();
+    colorPickerEl = null;
+  }
+}
+function openColorPicker(x, y, onPick){
+  closeColorPicker();
+
+  const wrap = document.createElement("div");
+  wrap.className = "colorPicker";
+  wrap.style.position = "fixed";
+  wrap.style.left = Math.max(8, Math.min(window.innerWidth - 220, x)) + "px";
+  wrap.style.top  = Math.max(8, Math.min(window.innerHeight - 120, y)) + "px";
+  wrap.style.zIndex = "9999";
+  wrap.style.padding = "10px";
+  wrap.style.borderRadius = "12px";
+  wrap.style.background = "rgba(20,20,24,0.98)";
+  wrap.style.border = "1px solid rgba(255,255,255,0.12)";
+  wrap.style.boxShadow = "0 10px 30px rgba(0,0,0,0.45)";
+
+  const title = document.createElement("div");
+  title.className = "muted";
+  title.style.marginBottom = "8px";
+  title.textContent = "Цвет проекта:";
+  wrap.appendChild(title);
+
+  const grid = document.createElement("div");
+  grid.style.display = "grid";
+  grid.style.gridTemplateColumns = "repeat(6, 26px)";
+  grid.style.gap = "8px";
+
+  for(const c of ALLOWED_PROJECT_COLORS){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "colorSwatch";
+    b.style.width = "26px";
+    b.style.height = "26px";
+    b.style.borderRadius = "8px";
+    b.style.border = "1px solid rgba(255,255,255,0.18)";
+    b.style.background = c;
+    b.title = c;
+    b.addEventListener("click", ()=>{
+      closeColorPicker();
+      onPick?.(c);
+    });
+    grid.appendChild(b);
+  }
+  wrap.appendChild(grid);
+
+  const hint = document.createElement("div");
+  hint.className = "muted";
+  hint.style.marginTop = "8px";
+  hint.style.fontSize = "12px";
+  hint.textContent = "Esc или клик вне — закрыть";
+  wrap.appendChild(hint);
+
+  document.body.appendChild(wrap);
+  colorPickerEl = wrap;
+
+  // close on outside click / esc
+  setTimeout(()=>{
+    const onDoc = (e)=>{ if(colorPickerEl && !colorPickerEl.contains(e.target)) closeColorPicker(); };
+    const onKey = (e)=>{ if(e.key === "Escape") closeColorPicker(); };
+    document.addEventListener("mousedown", onDoc, { once: true });
+    document.addEventListener("keydown", onKey, { once: true });
+  }, 0);
+}
 function calcHoursByProject(){
   const acc = new Map();
   for(const k in entries){
@@ -835,13 +842,7 @@ function calcHoursByProject(){
     const mult = slotMultiplier(dateISO, slot);
 
     const n = Math.min(2, taskIds.length);
-    let realPer;
-    if(n === 2){
-      realPer = 0.25;
-    } else {
-      // n === 1
-      realPer = cellHalf[k] ? 0.25 : 0.5;
-    }
+    const realPer = (n === 2) ? 0.25 : 0.5;
     const weightedPer = realPer * mult;
 
     for(let i=0;i<n;i++){
@@ -867,7 +868,7 @@ function renderProjects(){
   if(visibleRows.length === 0){
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 10;
+    td.colSpan = 9;
     td.className = "muted";
     td.textContent = showArchived
       ? "Проектов нет."
@@ -913,60 +914,42 @@ function renderProjects(){
 
     const dot = document.createElement("span");
     dot.className = "dot";
-    dot.style.background = stableColorFromString(p.id);
+    dot.style.background = (p.color ? p.color : stableColorFromString(p.id));
     dot.style.marginTop = "4px";
 
-    const nameIn = document.createElement("input");
-    nameIn.className = "input";
-    nameIn.type = "text";
-    nameIn.value = p.name;
-    nameIn.style.width = "100%";
-
-    // Enter = сохранить (через blur -> change)
-    nameIn.addEventListener("keydown", (e)=>{
-      if(e.key === "Enter"){
-        e.preventDefault();
-        nameIn.blur();
-      }
+    // клик по кружку — выбор цвета проекта
+    dot.style.cursor = "pointer";
+    dot.title = "Клик: изменить цвет";
+    dot.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      openColorPicker(e.clientX, e.clientY, async (hex)=>{
+        const prev = p.color;
+        p.color = normalizeHexColor(hex);
+        try{
+          await saveProjectToDb(p);
+          await fetchProjects();
+          refreshGroupDatalists();
+          renderAll(true);
+        } catch(err){
+          console.error(err);
+          alert("Ошибка сохранения цвета проекта.");
+          p.color = prev;
+        }
+      });
     });
 
-    nameIn.addEventListener("change", async ()=>{
-      const v = (nameIn.value || "").trim();
-      if(!v){
-        nameIn.value = p.name;
-        alert("Название проекта не может быть пустым.");
-        return;
-      }
-      if(v === p.name) return;
-
-      const prev = p.name;
-      p.name = v;
-
-      try{
-        await saveProjectToDb(p);
-        await fetchProjects();
-        refreshGroupDatalists();
-        renderAll(true);
-      } catch(e){
-        console.error(e);
-        alert("Ошибка сохранения названия проекта.");
-        p.name = prev;
-        nameIn.value = prev;
-      }
-    });
+    const nm = document.createElement("div");
+    nm.className = "pnameWrap";
+    nm.textContent = p.name;
 
     wrap.appendChild(dot);
-    wrap.appendChild(nameIn);
+    wrap.appendChild(nm);
     tdName.appendChild(wrap);
 
-    // Hours
-    const tdReal = document.createElement("td");
-    tdReal.className = "mono";
-    tdReal.textContent = hours.real.toFixed(2);
-
-    const tdW = document.createElement("td");
-    tdW.className = "mono";
-    tdW.textContent = hours.weighted.toFixed(2);
+    // Hours (one column)
+    const tdHours = document.createElement("td");
+    tdHours.className = "mono";
+    tdHours.textContent = `${hours.real.toFixed(2)} / ${hours.weighted.toFixed(2)}`;
 
     // Budget inline numeric input (no separate popup)
     const tdBudget = document.createElement("td");
@@ -1084,8 +1067,7 @@ function renderProjects(){
     tr.appendChild(tdPaid);
     tr.appendChild(tdGroup);
     tr.appendChild(tdName);
-    tr.appendChild(tdReal);
-    tr.appendChild(tdW);
+    tr.appendChild(tdHours);
     tr.appendChild(tdBudget);
     tr.appendChild(tdRate);
     tr.appendChild(tdComment);
