@@ -357,23 +357,33 @@ function renderRightHeader(){
     rightHeader.appendChild(el);
   }
 }
-function renderCellPills(taskIds){
+function renderCellPills(taskIds, isHalf = false){
   const wrap = document.createElement("div");
   wrap.className = "cellPills";
   const ids = (Array.isArray(taskIds) ? taskIds : []).slice(0,2);
 
-  for(const pid of ids){
+  for(let i=0;i<ids.length;i++){
+    const pid = ids[i];
     const p = projectById(pid);
     const name = p ? p.name : "— (проект удалён)";
     const color = stableColorFromString(pid);
+
     const pill = document.createElement("div");
     pill.className = "pill small";
+
+    // если это "пол-ячейки" и задача одна — делаем плашку половинной ширины
+    if(isHalf && ids.length === 1){
+      pill.classList.add("half");
+    }
+
     const dot = document.createElement("span");
     dot.className = "dot";
     dot.style.background = color;
+
     const pn = document.createElement("span");
     pn.className = "pname";
     pn.textContent = name;
+
     pill.appendChild(dot);
     pill.appendChild(pn);
     wrap.appendChild(pill);
@@ -399,7 +409,11 @@ function renderRightBody(){
       const cell = document.createElement("div");
       cell.className = "cell" + (mult === 1.0 ? " normal" : " premium");
 
-      if(tasks.length > 0) cell.appendChild(renderCellPills(tasks));
+      if(tasks.length > 0){
+        const key = entryKey(col.iso, s);
+        const isHalf = !!cellHalf[key] && tasks.length === 1;
+        cell.appendChild(renderCellPills(tasks, isHalf));
+      }
       cell.addEventListener("click", ()=> openCellModal(col.iso, s, tasks));
       row.appendChild(cell);
     }
