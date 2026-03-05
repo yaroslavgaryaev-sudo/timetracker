@@ -151,6 +151,10 @@ input[type=number] {
       border-bottom: 2px solid rgba(255,255,255,0.95);
       transform: rotate(45deg);
     }
+#halfCellCk{
+  width:18px;
+  height:18px;
+}
 
     /* Auth bar */
     .authBar{
