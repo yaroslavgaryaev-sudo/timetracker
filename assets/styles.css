@@ -151,10 +151,6 @@ input[type=number] {
       border-bottom: 2px solid rgba(255,255,255,0.95);
       transform: rotate(45deg);
     }
-#halfCellCk{
-  width:18px;
-  height:18px;
-}
 
     /* Auth bar */
     .authBar{
@@ -322,7 +318,13 @@ input[type=number] {
       flex: 1 1 0;
     }
     .pill.small{ padding: 2px 6px; font-size:11px; }
-    .dot{width:9px; height:9px; border-radius:999px; flex: 0 0 auto; background: var(--accent);}
+    
+    /* Пол-ячейки: одна задача занимает половину ширины (визуально как при 2 задачах) */
+    .pill.half{
+      flex: 0 0 calc(50% - 2px);
+      max-width: calc(50% - 2px);
+    }
+.dot{width:9px; height:9px; border-radius:999px; flex: 0 0 auto; background: var(--accent);}
     /* calendar pill name stays truncated */
     .pname{overflow:hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;}
 
