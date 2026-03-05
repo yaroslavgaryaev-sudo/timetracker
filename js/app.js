@@ -14,6 +14,7 @@ let userId = null;
 
 let projects = []; // {id,name,group,budget,color,comment,paid,archived,createdAt}
 let entries = {};  // key "date|slot" -> [pid1,pid2]
+let cellHalf = {}; // key "date|slot" -> true/false (пол-ячейки)
 let showArchived = false;
 
 const loadedDates = new Set();
@@ -143,6 +144,7 @@ function setAuthed(s){
     btnLogout.style.display = "none";
     projects = [];
     entries = {};
+    cellHalf = {};
     loadedDates.clear();
     dayOverrides.clear();
     renderAll(false);
@@ -192,7 +194,7 @@ async function fetchEntriesForDates(dateList){
   dates.forEach(d => loadedDates.add(d));
   const { data, error } = await sb
     .from("calendar_entries")
-    .select("date,slot,task_index,project_id")
+    .select("date,slot,task_index,project_id,is_half")
     .in("date", dates);
   if(error){
     dates.forEach(d => loadedDates.delete(d));
@@ -203,6 +205,11 @@ async function fetchEntriesForDates(dateList){
     if(!entries[k]) entries[k] = [];
     const idx = (row.task_index === 2) ? 1 : 0;
     entries[k][idx] = row.project_id;
+
+    // half-флаг храним один раз на ячейку (достаточно по task_index=1)
+    if(row.task_index === 1){
+      cellHalf[k] = !!row.is_half;
+    }
   }
 }
 async function fetchDayOverridesForDates(dateList){
@@ -248,11 +255,15 @@ async function deleteProjectFromDb(projectId){
   const { error: e2 } = await sb.from("calendar_entries").delete().eq("project_id", projectId);
   if(e2) console.warn(e2);
 }
-async function saveCellToDb(dateISO, slot, taskIds){
+async function saveCellToDb(dateISO, slot, taskIds, isHalf=false){
   const clean = (Array.isArray(taskIds) ? taskIds : [])
     .filter(Boolean)
     .filter((v,i,a)=>a.indexOf(v)===i)
     .slice(0,2);
+
+  const half = !!isHalf;
+  // half-режим: разрешаем только 1 задачу
+  if(half && clean.length > 1) clean.splice(1);
 
   const { error: delErr } = await sb
     .from("calendar_entries")
@@ -267,15 +278,22 @@ async function saveCellToDb(dateISO, slot, taskIds){
       date: dateISO,
       slot: slot,
       task_index: i+1,
-      project_id: pid
+      project_id: pid,
+      is_half: (i === 0 ? half : false)
     }));
     const { error: insErr } = await sb.from("calendar_entries").insert(rows);
     if(insErr) throw insErr;
   }
 
   const k = entryKey(dateISO, slot);
-  if(clean.length === 0) delete entries[k];
-  else entries[k] = clean;
+  if(clean.length === 0){
+    delete entries[k];
+    delete cellHalf[k];
+  } else {
+    entries[k] = clean;
+    // half имеет смысл только когда 1 задача
+    cellHalf[k] = (half && clean.length === 1);
+  }
 }
 
 /** Boot */
@@ -355,7 +373,7 @@ function renderRightHeader(){
     rightHeader.appendChild(el);
   }
 }
-function renderCellPills(taskIds){
+function renderCellPills(taskIds, isHalf=false){
   const wrap = document.createElement("div");
   wrap.className = "cellPills";
   const ids = (Array.isArray(taskIds) ? taskIds : []).slice(0,2);
@@ -366,6 +384,7 @@ function renderCellPills(taskIds){
     const color = (p && p.color) ? p.color : stableColorFromString(pid);
     const pill = document.createElement("div");
     pill.className = "pill small";
+    if(isHalf && ids.length === 1){ pill.classList.add("half"); }
     const dot = document.createElement("span");
     dot.className = "dot";
     dot.style.background = color;
@@ -397,7 +416,11 @@ function renderRightBody(){
       const cell = document.createElement("div");
       cell.className = "cell" + (mult === 1.0 ? " normal" : " premium");
 
-      if(tasks.length > 0) cell.appendChild(renderCellPills(tasks));
+      if(tasks.length > 0){
+        const key = entryKey(col.iso, s);
+        const isHalf = !!cellHalf[key] && tasks.length === 1;
+        cell.appendChild(renderCellPills(tasks, isHalf));
+      }
       cell.addEventListener("click", ()=> openCellModal(col.iso, s, tasks));
       row.appendChild(cell);
     }
@@ -482,6 +505,7 @@ const modalMetaCell = document.getElementById("modalMetaCell");
 const modalHintCell = document.getElementById("modalHintCell");
 const task1Select = document.getElementById("task1Select");
 const task2Select = document.getElementById("task2Select");
+const halfCellCk = document.getElementById("halfCellCk");
 const btnSaveCell = document.getElementById("saveCell");
 const btnClearCell = document.getElementById("clearCell");
 let modalCellState = { dateISO:null, slot:null };
@@ -512,9 +536,41 @@ function openCellModal(dateISO, slot, currentTasks){
   const tasks = (Array.isArray(currentTasks) ? currentTasks : []).slice(0,2);
   const isTwo = tasks.length === 2;
 
+  const key = entryKey(dateISO, slot);
+
+// определяем half для текущей ячейки (half возможен только при 1 задаче)
+let isHalf = !!cellHalf[key] && tasks.length === 1;
+if(tasks.length === 2) isHalf = false;
+
+if(halfCellCk){
+  halfCellCk.checked = isHalf;
+}
+
+function updateHalfUi(){
+  const on = !!(halfCellCk && halfCellCk.checked);
+
+  // half => вторая задача недоступна
+  if(halfCellCk){
+    if(on){
+      task2Select.value = "";
+      task2Select.disabled = true;
+    } else {
+      task2Select.disabled = false;
+    }
+  }
+
+  const label = (tasks.length === 2)
+    ? `2 задачи по 0.25ч`
+    : (on ? `1 задача 0.25ч (пол-ячейки)` : `1 задача 0.5ч`);
+
   modalMetaCell.textContent =
-    `${dateISO} • ${slotToLabel(slot)} – ${slotToLabel(slot+1)} • x${mult} • ` +
-    (isTwo ? `2 задачи по 0.25ч` : `1 задача 0.5ч`);
+    `${dateISO} • ${slotToLabel(slot)} – ${slotToLabel(slot+1)} • x${mult} • ` + label;
+}
+
+updateHalfUi();
+if(halfCellCk){
+  halfCellCk.onchange = updateHalfUi;
+}
 
   const selectable = projects.filter(isProjectSelectable);
 
@@ -527,11 +583,13 @@ function openCellModal(dateISO, slot, currentTasks){
     task1Select.appendChild(opt);
     task1Select.disabled = true;
     task2Select.disabled = true;
+    if(halfCellCk){ halfCellCk.disabled = true; halfCellCk.checked = false; }
     btnSaveCell.disabled = true;
     modalHintCell.textContent = "Открой “Проекты” и сними “Оплачено” у проекта.";
   } else {
     task1Select.disabled = false;
     task2Select.disabled = false;
+    if(halfCellCk){ halfCellCk.disabled = false; }
     btnSaveCell.disabled = false;
 
     fillSelectWithProjects(task1Select, selectable, false);
@@ -547,6 +605,16 @@ function openCellModal(dateISO, slot, currentTasks){
     else task2Select.value = "";
 
     modalHintCell.textContent = "Можно выбрать до 2 задач в одной ячейке.";
+
+    // Если выбрали вторую задачу — half выключаем
+    if(halfCellCk){
+      task2Select.onchange = ()=>{
+        if(task2Select.value){
+          halfCellCk.checked = false;
+          updateHalfUi();
+        }
+      };
+    }
   }
 
   modalBackCell.classList.add("open");
@@ -562,13 +630,14 @@ btnSaveCell.addEventListener("click", async ()=>{
 
   const t1 = task1Select.value;
   const t2 = task2Select.value;
+  const isHalf = !!(halfCellCk && halfCellCk.checked);
 
   const next = [];
   if(t1) next.push(t1);
-  if(t2) next.push(t2);
+  if(!isHalf && t2) next.push(t2);
 
   try{
-    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, next);
+    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, next, isHalf);
     closeCellModal();
     renderAll(true);
   } catch(e){
@@ -578,7 +647,7 @@ btnSaveCell.addEventListener("click", async ()=>{
 });
 btnClearCell.addEventListener("click", async ()=>{
   try{
-    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, []);
+    await saveCellToDb(modalCellState.dateISO, modalCellState.slot, [], false);
     closeCellModal();
     renderAll(true);
   } catch(e){
@@ -842,7 +911,9 @@ function calcHoursByProject(){
     const mult = slotMultiplier(dateISO, slot);
 
     const n = Math.min(2, taskIds.length);
-    const realPer = (n === 2) ? 0.25 : 0.5;
+    let realPer;
+    if(n === 2) realPer = 0.25;
+    else realPer = (cellHalf[k] ? 0.25 : 0.5);
     const weightedPer = realPer * mult;
 
     for(let i=0;i<n;i++){
