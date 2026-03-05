@@ -523,12 +523,12 @@ function openCellModal(dateISO, slot, currentTasks){
     fillSelectWithProjects(task2Select, [], true);
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "Нет доступных проектов (снимите 'Архив')";
+    opt.textContent = "Нет доступных проектов (снимите 'Оплачено')";
     task1Select.appendChild(opt);
     task1Select.disabled = true;
     task2Select.disabled = true;
     btnSaveCell.disabled = true;
-    modalHintCell.textContent = "Открой “Проекты” и выключи “Архив” у проекта.";
+    modalHintCell.textContent = "Открой “Проекты” и сними “Оплачено” у проекта.";
   } else {
     task1Select.disabled = false;
     task2Select.disabled = false;
@@ -868,7 +868,7 @@ function renderProjects(){
   if(visibleRows.length === 0){
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 9;
+    td.colSpan = 8;
     td.className = "muted";
     td.textContent = showArchived
       ? "Проектов нет."
@@ -883,7 +883,6 @@ function renderProjects(){
     const rate = hours.weighted > 0 ? (p.budget / hours.weighted) : null;
 
     const tr = document.createElement("tr");
-    if(p.paid) tr.classList.add("paid");
 
     // Paid checkbox (no text)
     const tdPaid = document.createElement("td");
@@ -938,12 +937,47 @@ function renderProjects(){
       });
     });
 
-    const nm = document.createElement("div");
-    nm.className = "pnameWrap";
-    nm.textContent = p.name;
+    const nameIn = document.createElement("input");
+    nameIn.className = "input";
+    nameIn.type = "text";
+    nameIn.value = p.name;
+    nameIn.style.width = "100%";
+
+    // Enter = сохранить (через blur -> change)
+    nameIn.addEventListener("keydown", (e)=>{
+      if(e.key === "Enter"){
+        e.preventDefault();
+        nameIn.blur();
+      }
+    });
+
+    nameIn.addEventListener("change", async ()=>{
+      const v = (nameIn.value || "").trim();
+      if(!v){
+        nameIn.value = p.name;
+        alert("Название проекта не может быть пустым.");
+        return;
+      }
+      if(v === p.name) return;
+
+      const prev = p.name;
+      p.name = v;
+
+      try{
+        await saveProjectToDb(p);
+        await fetchProjects();
+        refreshGroupDatalists();
+        renderAll(true);
+      } catch(e){
+        console.error(e);
+        alert("Ошибка сохранения названия проекта.");
+        p.name = prev;
+        nameIn.value = prev;
+      }
+    });
 
     wrap.appendChild(dot);
-    wrap.appendChild(nm);
+    wrap.appendChild(nameIn);
     tdName.appendChild(wrap);
 
     // Hours (one column)
@@ -996,14 +1030,6 @@ function renderProjects(){
     });
     tdComment.appendChild(ta);
 
-    // Archive checkbox (no text)
-    const tdArch = document.createElement("td");
-    const archCb = document.createElement("input");
-    archCb.className = "ck";
-    archCb.type = "checkbox";
-    archCb.checked = !!p.archived;
-    tdArch.appendChild(archCb);
-
     // Delete button "X"
     const tdActions = document.createElement("td");
     const delBtn = document.createElement("button");
@@ -1036,23 +1062,10 @@ function renderProjects(){
 
     paidCb.addEventListener("change", async ()=>{
       p.paid = paidCb.checked;
-      if(p.paid){
-        p.archived = true;
-        archCb.checked = true;
-      }
-      try{
-        await saveProjectToDb(p);
-        await fetchProjects();
-        refreshGroupDatalists();
-        renderAll(true);
-      } catch(e){
-        console.error(e);
-        alert("Ошибка сохранения проекта.");
-      }
-    });
 
-    archCb.addEventListener("change", async ()=>{
-      p.archived = archCb.checked;
+      // "Оплачено" = убрать из основного списка -> отправить в архив
+      p.archived = !!p.paid;
+
       try{
         await saveProjectToDb(p);
         await fetchProjects();
@@ -1071,7 +1084,6 @@ function renderProjects(){
     tr.appendChild(tdBudget);
     tr.appendChild(tdRate);
     tr.appendChild(tdComment);
-    tr.appendChild(tdArch);
     tr.appendChild(tdActions);
 
     projectsTbody.appendChild(tr);
