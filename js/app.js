@@ -388,12 +388,21 @@ function syncMonthYearControls(){
   }
 }
 
+function firstFullWeekStartOfMonth(year, monthIndex){
+  const firstDay = new Date(year, monthIndex, 1);
+  let weekStart = startOfWeek(firstDay);
+  if(weekStart.getMonth() !== monthIndex || weekStart.getFullYear() !== year){
+    weekStart = addDays(weekStart, 7);
+  }
+  return weekStart;
+}
+
 function jumpToSelectedMonth(){
   if(!monthSelect || !yearSelect) return;
   const y = Number(yearSelect.value);
   const m = Number(monthSelect.value);
   if(!Number.isFinite(y) || !Number.isFinite(m)) return;
-  currentWeekStart = startOfWeek(new Date(y, m, 1));
+  currentWeekStart = firstFullWeekStartOfMonth(y, m);
   loadCurrentWeekAndRender(false).catch(console.error);
 }
 
