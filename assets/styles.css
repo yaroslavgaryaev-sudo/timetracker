@@ -3,7 +3,7 @@
       --accent:#6aa6ff; --danger:#ff6a6a;
       --radius:14px;
       --timecol: 110px;
-      --daycol: 170px;
+      --daycol: minmax(0, 1fr);
       --paid-bg: rgba(102,255,166,0.10);
       --paid-text: rgba(170,255,210,0.95);
       --rowh: 30px;
@@ -475,3 +475,11 @@ input[type=number] {
       overflow: hidden;
       text-overflow: ellipsis;
     }
+
+
+.calendarNavControls .select{ min-width: 140px; }
+#yearSelect{ min-width: 96px; }
+.rightHeader, .gRow{ width:100%; }
+.hcell, .cell{ min-width: 0; }
+.hcell{ padding-left: 6px; padding-right: 6px; font-size: 12px; }
+.pname{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
