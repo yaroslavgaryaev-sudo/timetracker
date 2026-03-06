@@ -300,11 +300,7 @@ async function saveCellToDb(dateISO, slot, taskIds, isHalf=false){
 async function bootAuthed(){
   await fetchProjects();
   refreshGroupDatalists();
-  rebuildColumns();
-  await fetchEntriesForDates(columns.map(c=>c.iso));
-  await fetchDayOverridesForDates(columns.map(c=>c.iso));
-  renderAll(false);
-  requestAnimationFrame(()=> centerToday());
+  await showTodayWeek(false);
 }
 
 /** Tabs */
@@ -318,28 +314,45 @@ document.querySelectorAll(".tabbtn").forEach(btn=>{
 });
 
 /** Virtual calendar */
-const ANCHOR_DATE = fromISODate("2026-01-01");
 const DAY_COL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--daycol"));
 const SLOT_START = 18;      // 09:00
 const SLOT_END_EXCL = 54;   // 03:00(+1)
 
-let windowSize = 41;
-let windowStartIndex = todayIndex() - Math.floor(windowSize/2);
-function todayIndex(){ return daysBetween(ANCHOR_DATE, new Date()); }
+function startOfWeek(d){
+  const x = new Date(d);
+  x.setHours(0,0,0,0);
+  const day = x.getDay(); // 0=вс, 1=пн, ...
+  const diff = day === 0 ? -6 : 1 - day;
+  x.setDate(x.getDate() + diff);
+  return x;
+}
+function fmtWeekLabel(startDate){
+  const endDate = addDays(startDate, 6);
+  const a = startDate.toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit", year:"numeric" });
+  const b = endDate.toLocaleDateString("ru-RU", { day:"2-digit", month:"2-digit", year:"numeric" });
+  return `${a} — ${b}`;
+}
 
+let currentWeekStart = startOfWeek(new Date());
 let columns = [];
 const leftBody    = document.getElementById("leftBody");
 const hScroll     = document.getElementById("hScroll");
 const rightHeader = document.getElementById("rightHeader");
 const rightBody   = document.getElementById("rightBody");
+const prevWeekBtn = document.getElementById("prevWeek");
+const nextWeekBtn = document.getElementById("nextWeek");
+const weekLabel   = document.getElementById("weekLabel");
 
 function rebuildColumns(){
   columns = [];
-  const tIdx = todayIndex();
-  for(let i=0;i<windowSize;i++){
-    const idx = windowStartIndex + i;
-    const d = addDays(ANCHOR_DATE, idx);
-    columns.push({ index: idx, date: d, iso: toISODate(d), isToday: idx===tIdx });
+  const todayISO = toISODate(new Date());
+  for(let i=0; i<7; i++){
+    const d = addDays(currentWeekStart, i);
+    const iso = toISODate(d);
+    columns.push({ index: i, date: d, iso, isToday: iso === todayISO });
+  }
+  if(weekLabel){
+    weekLabel.textContent = fmtWeekLabel(currentWeekStart);
   }
 }
 function setTemplatesAndWidths(){
@@ -441,62 +454,45 @@ function forwardHorizontalWheel(e){
 rightBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
 leftBody.addEventListener("wheel", forwardHorizontalWheel, { passive: false });
 
-/* Infinite scroll */
-let scrollTicking = false;
-hScroll.addEventListener("scroll", ()=>{
-  if(scrollTicking) return;
-  scrollTicking = true;
-  requestAnimationFrame(async ()=>{
-    scrollTicking = false;
+async function loadCurrentWeekAndRender(keepScroll=false){
+  rebuildColumns();
+  if(userId){
+    await fetchEntriesForDates(columns.map(c=>c.iso));
+    await fetchDayOverridesForDates(columns.map(c=>c.iso));
+  }
+  renderAll(keepScroll);
+  hScroll.scrollLeft = 0;
+}
+async function showTodayWeek(keepScroll=false){
+  currentWeekStart = startOfWeek(new Date());
+  try{
+    await loadCurrentWeekAndRender(keepScroll);
+  } catch(e){
+    console.error(e);
+  }
+}
 
-    const nearRight = (hScroll.scrollLeft + hScroll.clientWidth) > (hScroll.scrollWidth - DAY_COL*4);
-    const nearLeft  = hScroll.scrollLeft < DAY_COL*2;
-
-    if(nearRight || nearLeft){
-      const shift = 10;
-      const prev = hScroll.scrollLeft;
-
-      windowStartIndex += nearRight ? shift : -shift;
-      rebuildColumns();
-
-      if(userId){
-        try{
-          await fetchEntriesForDates(columns.map(c=>c.iso));
-          await fetchDayOverridesForDates(columns.map(c=>c.iso));
-        } catch(e){ console.error(e); }
-      }
-
-      renderAll(true);
-
-      hScroll.scrollLeft = nearRight
-        ? Math.max(0, prev - shift*DAY_COL)
-        : (prev + shift*DAY_COL);
+document.getElementById("goToday").addEventListener("click", ()=> showTodayWeek(false));
+if(prevWeekBtn){
+  prevWeekBtn.addEventListener("click", async ()=>{
+    currentWeekStart = addDays(currentWeekStart, -7);
+    try{
+      await loadCurrentWeekAndRender(false);
+    } catch(e){
+      console.error(e);
     }
   });
-});
-function centerToday(){
-  const tIdx = todayIndex();
-  const left = windowStartIndex;
-  const right = windowStartIndex + windowSize - 1;
-
-  if(tIdx < left || tIdx > right){
-    windowStartIndex = tIdx - Math.floor(windowSize/2);
-    rebuildColumns();
-    if(userId){
-      Promise.all([
-        fetchEntriesForDates(columns.map(c=>c.iso)),
-        fetchDayOverridesForDates(columns.map(c=>c.iso))
-      ]).then(()=> renderAll(true)).catch(console.error);
-    } else {
-      renderAll(true);
-    }
-  }
-  const todayPos = tIdx - windowStartIndex;
-  const targetCenter = todayPos * DAY_COL + DAY_COL/2;
-  const desired = Math.max(0, targetCenter - (hScroll.clientWidth/2));
-  hScroll.scrollLeft = desired;
 }
-document.getElementById("goToday").addEventListener("click", centerToday);
+if(nextWeekBtn){
+  nextWeekBtn.addEventListener("click", async ()=>{
+    currentWeekStart = addDays(currentWeekStart, 7);
+    try{
+      await loadCurrentWeekAndRender(false);
+    } catch(e){
+      console.error(e);
+    }
+  });
+}
 
 /** Modal: cell tasks */
 const modalBackCell = document.getElementById("modalBackCell");
