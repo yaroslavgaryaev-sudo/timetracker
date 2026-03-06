@@ -300,7 +300,7 @@ async function saveCellToDb(dateISO, slot, taskIds, isHalf=false){
 async function bootAuthed(){
   await fetchProjects();
   refreshGroupDatalists();
-  await showTodayWeek(false);
+  await loadCurrentWeekAndRender(false);
 }
 
 /** Tabs */
