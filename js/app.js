@@ -332,7 +332,28 @@ function fmtWeekLabel(startDate){
   return `${a} — ${b}`;
 }
 
-let currentWeekStart = startOfWeek(new Date());
+const WEEK_STORAGE_KEY = "timeTrackerCurrentWeekStart";
+
+function saveCurrentWeekToStorage(){
+  try{
+    localStorage.setItem(WEEK_STORAGE_KEY, toISODate(currentWeekStart));
+  } catch(e){
+    console.warn("Week state was not saved:", e);
+  }
+}
+function loadCurrentWeekFromStorage(){
+  try{
+    const raw = localStorage.getItem(WEEK_STORAGE_KEY);
+    if(!raw) return startOfWeek(new Date());
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return startOfWeek(new Date());
+    return startOfWeek(fromISODate(raw));
+  } catch(e){
+    console.warn("Week state was not restored:", e);
+    return startOfWeek(new Date());
+  }
+}
+
+let currentWeekStart = loadCurrentWeekFromStorage();
 let columns = [];
 const leftBody    = document.getElementById("leftBody");
 const hScroll     = document.getElementById("hScroll");
@@ -407,6 +428,8 @@ function jumpToSelectedMonth(){
 }
 
 function rebuildColumns(){
+  currentWeekStart = startOfWeek(currentWeekStart);
+  saveCurrentWeekToStorage();
   columns = [];
   const todayISO = toISODate(new Date());
   for(let i=0; i<7; i++){
