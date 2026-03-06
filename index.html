@@ -46,11 +46,14 @@
 
       <div id="tab1" class="panel active">
         <div class="row">
-          <div class="controls">
+          <div class="controls calendarNavControls">
             <button class="btn icon" id="prevWeek" title="Предыдущая неделя">←</button>
             <button class="btn" id="goToday">Текущая неделя</button>
             <button class="btn icon" id="nextWeek" title="Следующая неделя">→</button>
-            <span class="pillNote" id="weekLabel"></span>
+
+            <select class="select" id="monthSelect" title="Месяц"></select>
+            <select class="select mono" id="yearSelect" title="Год"></select>
+
             <span class="pillNote">
               <span class="kbd">Клик</span> по дате в заголовке: <b>Рабочий ↔ Выходной</b>
             </span>
