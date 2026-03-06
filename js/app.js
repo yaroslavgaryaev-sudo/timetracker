@@ -314,7 +314,6 @@ document.querySelectorAll(".tabbtn").forEach(btn=>{
 });
 
 /** Virtual calendar */
-const DAY_COL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--daycol"));
 const SLOT_START = 18;      // 09:00
 const SLOT_END_EXCL = 54;   // 03:00(+1)
 
@@ -341,7 +340,44 @@ const rightHeader = document.getElementById("rightHeader");
 const rightBody   = document.getElementById("rightBody");
 const prevWeekBtn = document.getElementById("prevWeek");
 const nextWeekBtn = document.getElementById("nextWeek");
-const weekLabel   = document.getElementById("weekLabel");
+const monthSelect = document.getElementById("monthSelect");
+const yearSelect  = document.getElementById("yearSelect");
+const MONTH_NAMES_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+
+function initMonthYearControls(){
+  if(monthSelect && !monthSelect.options.length){
+    MONTH_NAMES_RU.forEach((name, idx)=>{
+      const opt = document.createElement("option");
+      opt.value = String(idx);
+      opt.textContent = name;
+      monthSelect.appendChild(opt);
+    });
+  }
+
+  if(yearSelect && !yearSelect.options.length){
+    const currentYear = new Date().getFullYear();
+    for(let y=currentYear - 10; y<=currentYear + 10; y++){
+      const opt = document.createElement("option");
+      opt.value = String(y);
+      opt.textContent = String(y);
+      yearSelect.appendChild(opt);
+    }
+  }
+}
+
+function syncMonthYearControls(){
+  if(monthSelect) monthSelect.value = String(currentWeekStart.getMonth());
+  if(yearSelect) yearSelect.value = String(currentWeekStart.getFullYear());
+}
+
+function jumpToSelectedMonth(){
+  if(!monthSelect || !yearSelect) return;
+  const y = Number(yearSelect.value);
+  const m = Number(monthSelect.value);
+  if(!Number.isFinite(y) || !Number.isFinite(m)) return;
+  currentWeekStart = startOfWeek(new Date(y, m, 1));
+  loadCurrentWeekAndRender(false).catch(console.error);
+}
 
 function rebuildColumns(){
   columns = [];
@@ -351,15 +387,13 @@ function rebuildColumns(){
     const iso = toISODate(d);
     columns.push({ index: i, date: d, iso, isToday: iso === todayISO });
   }
-  if(weekLabel){
-    weekLabel.textContent = fmtWeekLabel(currentWeekStart);
-  }
+  syncMonthYearControls();
 }
 function setTemplatesAndWidths(){
-  rightHeader.style.gridTemplateColumns = `repeat(${columns.length}, var(--daycol))`;
-  const w = Math.round(columns.length * DAY_COL);
-  rightHeader.style.width = w + "px";
-  rightBody.style.width   = w + "px";
+  const template = `repeat(${columns.length}, minmax(0, 1fr))`;
+  rightHeader.style.gridTemplateColumns = template;
+  rightHeader.style.width = "100%";
+  rightBody.style.width   = "100%";
 }
 function renderLeftTimes(){
   leftBody.innerHTML = "";
@@ -471,6 +505,10 @@ async function showTodayWeek(keepScroll=false){
     console.error(e);
   }
 }
+
+initMonthYearControls();
+if(monthSelect) monthSelect.addEventListener("change", jumpToSelectedMonth);
+if(yearSelect) yearSelect.addEventListener("change", jumpToSelectedMonth);
 
 document.getElementById("goToday").addEventListener("click", ()=> showTodayWeek(false));
 if(prevWeekBtn){
