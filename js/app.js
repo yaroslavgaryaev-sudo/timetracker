@@ -344,6 +344,29 @@ const monthSelect = document.getElementById("monthSelect");
 const yearSelect  = document.getElementById("yearSelect");
 const MONTH_NAMES_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
 
+function buildYearOptions(baseYear){
+  if(!yearSelect) return;
+
+  const currentYear = new Date().getFullYear();
+  let startYear, endYear;
+
+  if(baseYear >= currentYear - 5 && baseYear <= currentYear){
+    startYear = currentYear - 5;
+    endYear = currentYear;
+  } else {
+    startYear = baseYear - 5;
+    endYear = baseYear + 5;
+  }
+
+  yearSelect.innerHTML = "";
+  for(let y = startYear; y <= endYear; y++){
+    const opt = document.createElement("option");
+    opt.value = String(y);
+    opt.textContent = String(y);
+    yearSelect.appendChild(opt);
+  }
+}
+
 function initMonthYearControls(){
   if(monthSelect && !monthSelect.options.length){
     MONTH_NAMES_RU.forEach((name, idx)=>{
@@ -354,20 +377,15 @@ function initMonthYearControls(){
     });
   }
 
-  if(yearSelect && !yearSelect.options.length){
-    const currentYear = new Date().getFullYear();
-    for(let y=currentYear - 10; y<=currentYear + 10; y++){
-      const opt = document.createElement("option");
-      opt.value = String(y);
-      opt.textContent = String(y);
-      yearSelect.appendChild(opt);
-    }
-  }
+  buildYearOptions(currentWeekStart.getFullYear());
 }
 
 function syncMonthYearControls(){
   if(monthSelect) monthSelect.value = String(currentWeekStart.getMonth());
-  if(yearSelect) yearSelect.value = String(currentWeekStart.getFullYear());
+  if(yearSelect){
+    buildYearOptions(currentWeekStart.getFullYear());
+    yearSelect.value = String(currentWeekStart.getFullYear());
+  }
 }
 
 function jumpToSelectedMonth(){
